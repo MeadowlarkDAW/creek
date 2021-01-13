@@ -1,0 +1,16 @@
+[package]
+name = "rt-audio-disk-stream"
+version = "0.0.0"
+authors = ["Billy Messenger <BillyDM@protonmail.com>"]
+edition = "2018"
+license = "MIT"
+keywords = ["audio", "io", "disk", "stream"]
+categories = ["multimedia::audio"]
+description = "Realtime disk streaming IO for audio (placeholder)"
+documentation = "https://docs.rs/rt-audio-disk-stream"
+repository = "https://github.com/RustyDAW/rt-audio-disk-stream"
+readme = "README.md"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]

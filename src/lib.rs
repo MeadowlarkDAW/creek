@@ -147,8 +147,10 @@ impl StreamReader {
     ///
     /// This is realtime-safe because the stream stores a cache of its starting data.
     pub fn go_to_start(&mut self) {
-        let mut wanted_start_smp = self.prefetch_buffer[0].start_cache.starting_smp_in_file;
+        self.current_block_file_smp = self.prefetch_buffer[0].start_cache.starting_smp_in_file;
+        self.current_smp_in_block = 0;
 
+        let mut wanted_start_smp = self.current_block_file_smp;
         for block in self.prefetch_buffer.iter_mut() {
             block.use_start_cache = true;
             block.wanted_start_smp = wanted_start_smp;

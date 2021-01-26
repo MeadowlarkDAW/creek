@@ -618,7 +618,7 @@ impl ReadClient {
                     &block.block[i][0..second_len]
                 } else {
                     // Output silence.
-                    &SILENCE_BUFFER[0..first_len]
+                    &SILENCE_BUFFER[0..second_len]
                 };
 
                 read_buffer_part.copy_from_slice(from_buffer_part);
@@ -630,7 +630,6 @@ impl ReadClient {
         } else {
             // Only need to copy from current block.
             for i in 0..self.read_buffer.len() {
-                // Safe because data blocks will always have the same number of channels.
                 let read_buffer_part = &mut self.read_buffer[i][0..length];
 
                 let from_buffer_part = if let Some(block) = current_block_data {
@@ -649,7 +648,6 @@ impl ReadClient {
             if self.current_frame_in_block == BLOCK_SIZE {
                 self.advance_to_next_block();
 
-                // Safe because indexes are always constrained to be in-bounds inside `advance_to_next_block()`.
                 self.current_block_starting_frame_in_file = if let Some(next_block) =
                     &self.prefetch_buffer[self.current_block_index].block
                 {
@@ -665,11 +663,7 @@ impl ReadClient {
     }
 
     fn advance_to_next_block(&mut self) {
-        // Safe because indexes are always constrained to be in-bounds inside `advance_to_next_block()`.
-        let entry = unsafe {
-            self.prefetch_buffer
-                .get_unchecked_mut(self.current_block_index)
-        };
+        let entry = &mut self.prefetch_buffer[self.current_block_index];
 
         // Request a new block of data that is one block ahead of the
         // latest block in the prefetch buffer.

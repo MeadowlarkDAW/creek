@@ -15,3 +15,4 @@ readme = "README.md"
 
 [dependencies]
 rtrb = "0.1.2"
+symphonia = "0.1.0"

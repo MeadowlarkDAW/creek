@@ -1,14 +1,24 @@
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
+use std::time;
 
 use rtrb::{Consumer, Producer, RingBuffer};
 
 pub const BLOCK_SIZE: usize = 4096;
 pub const NUM_PREFETCH_BLOCKS: usize = 4;
 pub const MSG_CHANNEL_SIZE: usize = 64;
+pub const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);
 
 static SILENCE_BUFFER: [f32; BLOCK_SIZE] = [0.0; BLOCK_SIZE];
+
+pub struct FileInfo {
+    pub params: symphonia::core::codecs::CodecParameters,
+
+    pub num_frames: usize,
+    pub num_channels: usize,
+    pub sample_rate: u32,
+}
 
 enum ServerToClientMsg {
     ReadIntoBlockRes {
@@ -42,6 +52,10 @@ enum ClientToServerMsg {
     DisposeCache {
         cache: DataBlockCache,
     },
+    DisposeCacheEntries {
+        caches: Vec<DataBlockCacheEntry>,
+    },
+    Close,
 }
 
 #[derive(Debug)]
@@ -86,10 +100,16 @@ use symphonia::core::codecs::Decoder;
 use symphonia::core::formats::FormatReader;
 
 struct ReadServer {
+    to_client_tx: Producer<ServerToClientMsg>,
+    from_client_rx: Consumer<ClientToServerMsg>,
+
     reader: Box<dyn FormatReader>,
     decoder: Box<dyn Decoder>,
 
     sample_buf: SampleBuffer<f32>,
+
+    block_pool: Vec<DataBlock>,
+    cache_pool: Vec<DataBlockCache>,
 
     num_frames: usize,
     num_channels: usize,
@@ -100,7 +120,49 @@ struct ReadServer {
 }
 
 impl ReadServer {
-    pub fn new<P: Into<PathBuf>>(file: P, verify: bool) -> Result<Self, OpenError> {
+    pub fn new(
+        file: PathBuf,
+        verify: bool,
+        start_frame_in_file: usize,
+        to_client_tx: Producer<ServerToClientMsg>,
+        from_client_rx: Consumer<ClientToServerMsg>,
+    ) -> Result<FileInfo, OpenError> {
+        let (mut open_tx, mut open_rx) = RingBuffer::<Result<FileInfo, OpenError>>::new(1).split();
+
+        std::thread::spawn(move || {
+            match Self::build(
+                file,
+                verify,
+                start_frame_in_file,
+                to_client_tx,
+                from_client_rx,
+            ) {
+                Ok((server, file_info)) => {
+                    open_tx.push(Ok(file_info)).unwrap();
+                    server.run();
+                }
+                Err(e) => {
+                    open_tx.push(Err(e)).unwrap();
+                }
+            }
+        });
+
+        loop {
+            if let Ok(res) = open_rx.pop() {
+                return res;
+            }
+
+            std::thread::sleep(SERVER_WAIT_TIME);
+        }
+    }
+
+    pub fn build(
+        file: PathBuf,
+        verify: bool,
+        mut start_frame_in_file: usize,
+        to_client_tx: Producer<ServerToClientMsg>,
+        from_client_rx: Consumer<ClientToServerMsg>,
+    ) -> Result<(Self, FileInfo), OpenError> {
         use symphonia::core::codecs::DecoderOptions;
         use symphonia::core::errors::Error;
         use symphonia::core::formats::FormatOptions;
@@ -109,19 +171,17 @@ impl ReadServer {
         use symphonia::core::probe::Hint;
         use symphonia::core::units::Duration;
 
-        let path: PathBuf = file.into();
-
         // Create a hint to help the format registry guess what format reader is appropriate.
         let mut hint = Hint::new();
 
         // Provide the file extension as a hint.
-        if let Some(extension) = path.extension() {
+        if let Some(extension) = file.extension() {
             if let Some(extension_str) = extension.to_str() {
                 hint.with_extension(extension_str);
             }
         }
 
-        let source = Box::new(File::open(path)?);
+        let source = Box::new(File::open(file)?);
 
         // Create the media source stream using the boxed media source from above.
         let mss = MediaSourceStream::new(source);
@@ -140,20 +200,34 @@ impl ReadServer {
             ..Default::default()
         };
 
-        // Get the default stream.
-        let stream = reader
-            .default_stream()
-            .ok_or_else(|| OpenError::NoDefaultStream)?;
+        let params = {
+            // Get the default stream.
+            let stream = reader
+                .default_stream()
+                .ok_or_else(|| OpenError::NoDefaultStream)?;
 
-        let params = &stream.codec_params;
+            stream.codec_params.clone()
+        };
 
         let num_frames = params.n_frames.ok_or_else(|| OpenError::NoNumFrames)? as usize;
         let num_channels = (params.channels.ok_or_else(|| OpenError::NoNumChannels)?).count();
         let sample_rate = params.sample_rate.unwrap_or(44100);
 
         // Create a decoder for the stream.
-        let mut decoder =
-            symphonia::default::get_codecs().make(&stream.codec_params, &decoder_opts)?;
+        let mut decoder = symphonia::default::get_codecs().make(&params, &decoder_opts)?;
+
+        // Seek the reader to the requested position.
+        if start_frame_in_file != 0 {
+            use symphonia::core::formats::SeekTo;
+
+            start_frame_in_file = wrap_frame(start_frame_in_file, num_frames);
+
+            let seconds = start_frame_in_file as f64 / f64::from(sample_rate);
+
+            reader.seek(SeekTo::Time {
+                time: seconds.into(),
+            })?;
+        }
 
         // Decode the first packet to get the signal specification.
         let sample_buf = loop {
@@ -167,7 +241,11 @@ impl ReadServer {
                     // Get the buffer duration.
                     let duration = Duration::from(decoded.capacity() as u64);
 
-                    break SampleBuffer::<f32>::new(duration, spec);
+                    let mut sample_buf = SampleBuffer::<f32>::new(duration, spec);
+
+                    sample_buf.copy_interleaved_ref(decoded);
+
+                    break sample_buf;
                 }
                 Err(Error::DecodeError(e)) => {
                     // Decode errors are not fatal. Send a warning and try to decode the next packet.
@@ -183,22 +261,162 @@ impl ReadServer {
             }
         };
 
-        Ok(Self {
-            reader,
-            decoder,
-
-            sample_buf,
-
+        let file_info = FileInfo {
+            params,
             num_frames,
             num_channels,
             sample_rate,
+        };
 
-            current_frame: 0,
-            did_sync: false,
-        })
+        Ok((
+            Self {
+                to_client_tx,
+                from_client_rx,
+
+                reader,
+                decoder,
+
+                sample_buf,
+
+                block_pool: Vec::new(),
+                cache_pool: Vec::new(),
+
+                num_frames,
+                num_channels,
+                sample_rate,
+
+                current_frame: start_frame_in_file,
+                did_sync: false,
+            },
+            file_info,
+        ))
     }
 
-    pub fn seek(&mut self, frame: usize) -> Result<(), symphonia::core::errors::Error> {
+    fn run(mut self) {
+        let mut run = true;
+        while run {
+            while let Ok(msg) = self.from_client_rx.pop() {
+                match msg {
+                    ClientToServerMsg::ReadIntoBlock {
+                        block_index,
+                        mut block,
+                        starting_frame_in_file,
+                    } => {
+                        if block.is_none() {
+                            // Try using one in the pool if it exists.
+                            block = Some(self.block_pool.pop().unwrap_or(
+                                // No blocks in pool. Create a new one.
+                                DataBlock::new(self.num_channels),
+                            ));
+                        }
+
+                        let mut block = block.unwrap();
+                        block.starting_frame_in_file = starting_frame_in_file;
+                        block.requested_frame_in_file = starting_frame_in_file;
+
+                        match self.decode_into_block(&mut block) {
+                            Ok(()) => {
+                                self.to_client_tx
+                                    .push(ServerToClientMsg::ReadIntoBlockRes {
+                                        block_index,
+                                        block,
+                                    })
+                                    .expect("Server to client channel full");
+                            }
+                            Err(e) => {
+                                self.to_client_tx
+                                    .push(ServerToClientMsg::FatalError(e))
+                                    .expect("Server to client channel full");
+                                run = false;
+                                break;
+                            }
+                        }
+                    }
+                    ClientToServerMsg::DisposeBlock { block } => {
+                        // Store the block to be reused.
+                        self.block_pool.push(block);
+                    }
+                    ClientToServerMsg::SeekTo { frame } => {
+                        if let Err(e) = self.seek(frame) {
+                            self.to_client_tx
+                                .push(ServerToClientMsg::FatalError(e))
+                                .expect("Server to client channel full");
+                            run = false;
+                            break;
+                        }
+                    }
+                    ClientToServerMsg::Cache {
+                        cache_index,
+                        mut cache,
+                        starting_frame_in_file,
+                    } => {
+                        if cache.is_none() {
+                            // Try using one in the pool if it exists.
+                            cache = Some(self.cache_pool.pop().unwrap_or(
+                                // No caches in pool. Create a new one.
+                                DataBlockCache::new(self.num_channels),
+                            ));
+                        }
+
+                        let mut cache = cache.unwrap();
+                        cache.requested_frame_in_file = starting_frame_in_file;
+
+                        let current_frame = self.current_frame;
+
+                        // Seek to the position the client wants to cache.
+                        if let Err(e) = self.seek(starting_frame_in_file) {
+                            self.to_client_tx
+                                .push(ServerToClientMsg::FatalError(e))
+                                .expect("Server to client channel full");
+                            run = false;
+                            break;
+                        }
+
+                        // Fill the cache
+                        for block in cache.blocks.iter_mut() {
+                            if let Err(e) = self.decode_into_block(block) {
+                                self.to_client_tx
+                                    .push(ServerToClientMsg::FatalError(e))
+                                    .expect("Server to client channel full");
+                                run = false;
+                                break;
+                            }
+                        }
+
+                        // Seek back to the previous position.
+                        if let Err(e) = self.seek(current_frame) {
+                            self.to_client_tx
+                                .push(ServerToClientMsg::FatalError(e))
+                                .expect("Server to client channel full");
+                            run = false;
+                            break;
+                        }
+
+                        self.to_client_tx
+                            .push(ServerToClientMsg::CacheRes { cache_index, cache })
+                            .expect("Server to client channel full");
+                    }
+                    ClientToServerMsg::DisposeCache { cache } => {
+                        // Store the cache to be reused.
+                        self.cache_pool.push(cache);
+                    }
+                    ClientToServerMsg::DisposeCacheEntries { caches } => {
+                        // The caches will be dropped here.
+                    }
+                    ClientToServerMsg::Close => {
+                        run = false;
+                        break;
+                    }
+                }
+            }
+
+            std::thread::sleep(SERVER_WAIT_TIME);
+        }
+
+        self.decoder.close();
+    }
+
+    fn seek(&mut self, frame: usize) -> Result<(), symphonia::core::errors::Error> {
         use symphonia::core::formats::SeekTo;
 
         self.current_frame = wrap_frame(frame, self.num_frames);
@@ -214,7 +432,7 @@ impl ReadServer {
         Ok(())
     }
 
-    pub fn decode_into_block(
+    fn decode_into_block(
         &mut self,
         data_block: &mut DataBlock,
     ) -> Result<(), symphonia::core::errors::Error> {
@@ -293,10 +511,39 @@ impl ReadServer {
 pub struct ReadStream {}
 
 impl ReadStream {
-    pub fn new<P: Into<PathBuf>>(file: P, verify: bool) -> Result<Self, OpenError> {
-        let mut server = ReadServer::new(file, verify)?;
+    pub fn new<P: Into<PathBuf>>(
+        file: P,
+        start_frame_in_file: usize,
+        max_num_caches: usize,
+        decode_verify: bool,
+    ) -> Result<ReadClient, OpenError> {
+        let (to_server_tx, from_client_rx) =
+            RingBuffer::<ClientToServerMsg>::new(MSG_CHANNEL_SIZE).split();
+        let (to_client_tx, from_server_rx) =
+            RingBuffer::<ServerToClientMsg>::new(MSG_CHANNEL_SIZE).split();
 
-        Ok(Self {})
+        let file: PathBuf = file.into();
+
+        match ReadServer::new(
+            file,
+            decode_verify,
+            start_frame_in_file,
+            to_client_tx,
+            from_client_rx,
+        ) {
+            Ok(file_info) => {
+                let client = ReadClient::new(
+                    to_server_tx,
+                    from_server_rx,
+                    start_frame_in_file,
+                    max_num_caches,
+                    file_info,
+                );
+
+                Ok(client)
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -307,10 +554,28 @@ fn wrap_frame(mut frame: usize, len: usize) -> usize {
     frame
 }
 
-pub struct DataBlock {
+struct DataBlock {
     pub block: Vec<[f32; BLOCK_SIZE]>,
     pub starting_frame_in_file: usize,
     pub requested_frame_in_file: usize,
+}
+
+impl DataBlock {
+    pub(crate) fn new(num_channels: usize) -> Self {
+        let mut block: Vec<[f32; BLOCK_SIZE]> = Vec::with_capacity(num_channels);
+        for _ in 0..num_channels {
+            // Safe because block will be always filled before it is sent to be read by the client.
+            let data: [f32; BLOCK_SIZE] =
+                unsafe { std::mem::MaybeUninit::<[f32; BLOCK_SIZE]>::uninit().assume_init() };
+            block.push(data);
+        }
+
+        DataBlock {
+            block,
+            starting_frame_in_file: 0,
+            requested_frame_in_file: 0,
+        }
+    }
 }
 
 struct DataBlockEntry {
@@ -324,27 +589,45 @@ struct DataBlockCache {
     pub requested_frame_in_file: usize,
 }
 
+impl DataBlockCache {
+    pub(crate) fn new(num_channels: usize) -> Self {
+        // Safe because we initialize this in the next step.
+        let mut blocks: [DataBlock; NUM_PREFETCH_BLOCKS] = unsafe {
+            std::mem::MaybeUninit::<[DataBlock; NUM_PREFETCH_BLOCKS]>::uninit().assume_init()
+        };
+
+        for block in blocks.iter_mut() {
+            *block = DataBlock::new(num_channels);
+        }
+
+        Self {
+            blocks,
+            requested_frame_in_file: 0,
+        }
+    }
+}
+
 struct DataBlockCacheEntry {
     pub cache: Option<DataBlockCache>,
     pub wanted_start_smp: usize,
 }
 
 pub struct ReadData<'a> {
-    data: &'a Vec<Vec<f32>>,
+    data: &'a DataBlock,
     len: usize,
 }
 
 impl<'a> ReadData<'a> {
-    pub(crate) fn new(data: &'a Vec<Vec<f32>>, len: usize) -> Self {
+    pub(crate) fn new(data: &'a DataBlock, len: usize) -> Self {
         Self { data, len }
     }
 
     pub fn read_channel(&self, channel: usize) -> &[f32] {
-        &self.data[channel][0..self.len]
+        &self.data.block[channel][0..self.len]
     }
 
     pub fn num_channels(&self) -> usize {
-        self.data.len()
+        self.data.block.len()
     }
 
     pub fn buffer_len(&self) -> usize {
@@ -352,42 +635,55 @@ impl<'a> ReadData<'a> {
     }
 }
 
+#[derive(Debug)]
+pub enum ReadError {
+    FatalError(symphonia::core::errors::Error),
+    ServerClosed,
+}
+
+impl std::error::Error for ReadError {}
+
+impl std::fmt::Display for ReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReadError::FatalError(e) => write!(f, "Fatal error: {:?}", e),
+            ReadError::ServerClosed => write!(f, "Server closed unexpectedly"),
+        }
+    }
+}
+
+impl From<symphonia::core::errors::Error> for ReadError {
+    fn from(e: symphonia::core::errors::Error) -> Self {
+        ReadError::FatalError(e)
+    }
+}
+
 pub struct ReadClient {
     to_server_tx: Producer<ClientToServerMsg>,
     from_server_rx: Consumer<ServerToClientMsg>,
 
-    read_buffer: Vec<Vec<f32>>,
-    prefetch_buffer: Vec<DataBlockEntry>,
-    caches: Vec<DataBlockCacheEntry>,
+    read_buffer: Option<DataBlock>,
+    prefetch_buffer: [DataBlockEntry; NUM_PREFETCH_BLOCKS],
+    caches: Option<Vec<DataBlockCacheEntry>>,
 
-    num_channels: usize,
     current_block_index: usize,
     next_block_index: usize,
     current_block_starting_frame_in_file: usize,
     current_frame_in_block: usize,
+
+    file_info: FileInfo,
+    error: bool,
 }
 
 impl ReadClient {
     pub(crate) fn new(
         to_server_tx: Producer<ClientToServerMsg>,
         from_server_rx: Consumer<ServerToClientMsg>,
-        prefetch_buffer: Vec<DataBlockEntry>,
         starting_frame_in_file: usize,
-        num_channels: usize,
         max_num_caches: usize,
+        file_info: FileInfo,
     ) -> Self {
-        let mut read_buffer: Vec<Vec<f32>> = Vec::with_capacity(num_channels);
-        for _ in 0..num_channels {
-            let mut data: Vec<f32> = Vec::with_capacity(BLOCK_SIZE);
-
-            // Safe because algorithm will always ensure that data can only be
-            // read once it's written to.
-            unsafe {
-                data.set_len(BLOCK_SIZE);
-            }
-
-            read_buffer.push(data);
-        }
+        let read_buffer = Some(DataBlock::new(file_info.num_channels));
 
         let mut caches: Vec<DataBlockCacheEntry> = Vec::with_capacity(max_num_caches);
         for _ in 0..max_num_caches {
@@ -397,6 +693,21 @@ impl ReadClient {
             });
         }
 
+        // Safe because we initialize the values in the next step.
+        let mut prefetch_buffer: [DataBlockEntry; NUM_PREFETCH_BLOCKS] = unsafe {
+            std::mem::MaybeUninit::<[DataBlockEntry; NUM_PREFETCH_BLOCKS]>::uninit().assume_init()
+        };
+        let mut wanted_start_smp = starting_frame_in_file;
+        for entry in prefetch_buffer.iter_mut() {
+            *entry = DataBlockEntry {
+                use_cache: None,
+                block: None,
+                wanted_start_smp,
+            };
+
+            wanted_start_smp += BLOCK_SIZE;
+        }
+
         Self {
             to_server_tx,
             from_server_rx,
@@ -404,25 +715,37 @@ impl ReadClient {
             read_buffer,
             prefetch_buffer,
 
-            caches,
+            caches: Some(caches),
 
-            num_channels,
             current_block_index: 0,
             next_block_index: 1,
             current_block_starting_frame_in_file: starting_frame_in_file,
             current_frame_in_block: 0,
+
+            file_info,
+            error: false,
         }
     }
 
     pub fn max_num_caches(&self) -> usize {
-        self.caches.len()
+        self.caches.as_ref().unwrap().len()
     }
 
-    pub fn cache(&mut self, cache_index: usize, starting_frame_in_file: usize) -> bool {
-        assert!(cache_index < self.caches.len());
+    pub fn cache(
+        &mut self,
+        cache_index: usize,
+        starting_frame_in_file: usize,
+    ) -> Result<bool, ReadError> {
+        if self.error {
+            return Err(ReadError::ServerClosed);
+        }
+
+        let caches = self.caches.as_mut().unwrap();
+
+        assert!(cache_index < caches.len());
 
         let mut do_cache = false;
-        if let Some(cache) = &self.caches[cache_index].cache {
+        if let Some(cache) = &caches[cache_index].cache {
             if cache.requested_frame_in_file != starting_frame_in_file {
                 do_cache = true;
             }
@@ -431,8 +754,8 @@ impl ReadClient {
         }
 
         if do_cache {
-            self.caches[cache_index].wanted_start_smp = starting_frame_in_file;
-            let cache = self.caches[cache_index].cache.take();
+            caches[cache_index].wanted_start_smp = starting_frame_in_file;
+            let cache = caches[cache_index].cache.take();
 
             self.to_server_tx
                 .push(ClientToServerMsg::Cache {
@@ -442,14 +765,22 @@ impl ReadClient {
                 })
                 .expect("Client to Server channel full");
 
-            return false;
+            return Ok(false);
         }
 
-        true
+        Ok(true)
     }
 
-    pub fn seek_to_cache(&mut self, cache_index: usize, starting_frame_in_file: usize) -> bool {
-        let cache_exists = self.cache(cache_index, starting_frame_in_file);
+    pub fn seek_to_cache(
+        &mut self,
+        cache_index: usize,
+        starting_frame_in_file: usize,
+    ) -> Result<bool, ReadError> {
+        if self.error {
+            return Err(ReadError::ServerClosed);
+        }
+
+        let cache_exists = self.cache(cache_index, starting_frame_in_file)?;
 
         self.current_block_starting_frame_in_file = starting_frame_in_file;
         self.current_frame_in_block = 0;
@@ -471,16 +802,57 @@ impl ReadClient {
             wanted_start_smp += BLOCK_SIZE;
         }
 
-        cache_exists
+        Ok(cache_exists)
     }
 
-    /// Read the next slice of data with length `length`.
+    /// Returns true if there is data to be read, false otherwise.
     ///
-    /// ## Panics
-    /// This will panic if `length` > `BLOCK_SIZE` (4096).
-    pub fn read(&mut self, length: usize) -> ReadData {
-        assert!(length <= BLOCK_SIZE);
+    /// Note the `read()` method can still be called if this returns false,
+    /// it will just output silence instead.
+    pub fn is_ready(&mut self) -> Result<bool, ReadError> {
+        self.poll()?;
 
+        // Check if the next two blocks are ready.
+
+        if let Some(cache_index) = self.prefetch_buffer[self.current_block_index].use_cache {
+            if self.caches.as_ref().unwrap()[cache_index].cache.is_none() {
+                // Cache has not been recieved yet.
+                return Ok(false);
+            }
+        } else if self.prefetch_buffer[self.current_block_index]
+            .block
+            .is_none()
+        {
+            // Block has not been recieved yet.
+            return Ok(false);
+        }
+
+        if let Some(cache_index) = self.prefetch_buffer[self.next_block_index].use_cache {
+            if self.caches.as_ref().unwrap()[cache_index].cache.is_none() {
+                // Cache has not been recieved yet.
+                return Ok(false);
+            }
+        } else if self.prefetch_buffer[self.next_block_index].block.is_none() {
+            // Block has not been recieved yet.
+            return Ok(false);
+        }
+
+        Ok(true)
+    }
+
+    pub fn block_until_ready(&mut self) -> Result<(), ReadError> {
+        loop {
+            if self.is_ready()? {
+                break;
+            }
+
+            std::thread::sleep(SERVER_WAIT_TIME);
+        }
+
+        Ok(())
+    }
+
+    fn poll(&mut self) -> Result<(), ReadError> {
         // Retrieve any data sent from the server.
         while let Ok(msg) = self.from_server_rx.pop() {
             match msg {
@@ -501,14 +873,14 @@ impl ReadClient {
                         // Store the new block into the prefetch buffer.
                         prefetch_block.block = Some(block);
                     } else {
-                        // Tell the IO server to deallocate the block.
+                        // Tell the server to deallocate the block.
                         self.to_server_tx
                             .push(ClientToServerMsg::DisposeBlock { block })
                             .expect("Client to Server channel full");
                     }
                 }
                 ServerToClientMsg::CacheRes { cache_index, cache } => {
-                    let cache_entry = &mut self.caches[cache_index];
+                    let cache_entry = &mut self.caches.as_mut().unwrap()[cache_index];
 
                     // Only use results from the latest request.
                     if cache.requested_frame_in_file == cache_entry.wanted_start_smp {
@@ -522,23 +894,41 @@ impl ReadClient {
                         // Store the new cache.
                         cache_entry.cache = Some(cache);
                     } else {
-                        // Tell the IO server to deallocate the cache.
+                        // Tell the server to deallocate the cache.
                         self.to_server_tx
                             .push(ClientToServerMsg::DisposeCache { cache })
                             .expect("Client to Server channel full");
                     }
                 }
                 ServerToClientMsg::FatalError(e) => {
-                    // TODO: handle error
+                    self.error = true;
+                    return Err(e.into());
                 }
             }
         }
 
+        Ok(())
+    }
+
+    /// Read the next slice of data with length `length`.
+    ///
+    /// ## Panics
+    /// This will panic if `length` > `BLOCK_SIZE` (4096).
+    pub fn read(&mut self, length: usize) -> Result<ReadData, ReadError> {
+        assert!(length <= BLOCK_SIZE);
+
+        if self.error {
+            return Err(ReadError::ServerClosed);
+        }
+
+        self.poll()?;
+
+        // Get the first block of data.
         let (current_block_data, current_block_start_frame) = {
             let current_block = &self.prefetch_buffer[self.current_block_index];
 
             if let Some(cache_index) = current_block.use_cache {
-                if let Some(cache) = &self.caches[cache_index].cache {
+                if let Some(cache) = &self.caches.as_ref().unwrap()[cache_index].cache {
                     let start_frame = cache.blocks[self.current_block_index].starting_frame_in_file;
                     (Some(&cache.blocks[self.current_block_index]), start_frame)
                 } else {
@@ -565,33 +955,34 @@ impl ReadClient {
             // Data spans between two blocks, so two copies need to be performed.
 
             // Copy from first block.
-
             let first_len = BLOCK_SIZE - self.current_frame_in_block;
             let second_len = length - first_len;
+            {
+                let read_buffer = self.read_buffer.as_mut().unwrap();
 
-            for i in 0..self.read_buffer.len() {
-                let read_buffer_part = &mut self.read_buffer[i][0..first_len];
+                for i in 0..read_buffer.block.len() {
+                    let read_buffer_part = &mut read_buffer.block[i][0..first_len];
 
-                let from_buffer_part = if let Some(block) = current_block_data {
-                    &block.block[i]
-                        [self.current_frame_in_block..self.current_frame_in_block + first_len]
-                } else {
-                    // Output silence.
-                    &SILENCE_BUFFER[0..first_len]
-                };
+                    let from_buffer_part = if let Some(block) = current_block_data {
+                        &block.block[i]
+                            [self.current_frame_in_block..self.current_frame_in_block + first_len]
+                    } else {
+                        // Output silence.
+                        &SILENCE_BUFFER[0..first_len]
+                    };
 
-                read_buffer_part.copy_from_slice(from_buffer_part);
+                    read_buffer_part.copy_from_slice(from_buffer_part);
+                }
             }
 
             self.advance_to_next_block();
 
-            // Copy from next block.
-
+            // Get the next block of data.
             let (next_block_data, next_block_start_frame) = {
                 let next_block = &self.prefetch_buffer[self.current_block_index];
 
                 if let Some(cache_index) = next_block.use_cache {
-                    if let Some(cache) = &self.caches[cache_index].cache {
+                    if let Some(cache) = &self.caches.as_ref().unwrap()[cache_index].cache {
                         let start_frame =
                             cache.blocks[self.current_block_index].starting_frame_in_file;
                         (Some(&cache.blocks[self.current_block_index]), start_frame)
@@ -611,17 +1002,22 @@ impl ReadClient {
             };
 
             // Copy from second block
-            for i in 0..self.read_buffer.len() {
-                let read_buffer_part = &mut self.read_buffer[i][first_len..first_len + second_len];
+            {
+                let read_buffer = self.read_buffer.as_mut().unwrap();
 
-                let from_buffer_part = if let Some(block) = next_block_data {
-                    &block.block[i][0..second_len]
-                } else {
-                    // Output silence.
-                    &SILENCE_BUFFER[0..second_len]
-                };
+                for i in 0..read_buffer.block.len() {
+                    let read_buffer_part =
+                        &mut read_buffer.block[i][first_len..first_len + second_len];
 
-                read_buffer_part.copy_from_slice(from_buffer_part);
+                    let from_buffer_part = if let Some(block) = next_block_data {
+                        &block.block[i][0..second_len]
+                    } else {
+                        // Output silence.
+                        &SILENCE_BUFFER[0..second_len]
+                    };
+
+                    read_buffer_part.copy_from_slice(from_buffer_part);
+                }
             }
 
             // Advance.
@@ -629,18 +1025,22 @@ impl ReadClient {
             self.current_frame_in_block = second_len;
         } else {
             // Only need to copy from current block.
-            for i in 0..self.read_buffer.len() {
-                let read_buffer_part = &mut self.read_buffer[i][0..length];
+            {
+                let read_buffer = self.read_buffer.as_mut().unwrap();
 
-                let from_buffer_part = if let Some(block) = current_block_data {
-                    &block.block[i]
-                        [self.current_frame_in_block..self.current_frame_in_block + length]
-                } else {
-                    // Output silence.
-                    &SILENCE_BUFFER[0..length]
-                };
+                for i in 0..read_buffer.block.len() {
+                    let read_buffer_part = &mut read_buffer.block[i][0..length];
 
-                read_buffer_part.copy_from_slice(from_buffer_part);
+                    let from_buffer_part = if let Some(block) = current_block_data {
+                        &block.block[i]
+                            [self.current_frame_in_block..self.current_frame_in_block + length]
+                    } else {
+                        // Output silence.
+                        &SILENCE_BUFFER[0..length]
+                    };
+
+                    read_buffer_part.copy_from_slice(from_buffer_part);
+                }
             }
 
             // Advance.
@@ -659,7 +1059,7 @@ impl ReadClient {
             }
         }
 
-        ReadData::new(&self.read_buffer, length)
+        Ok(ReadData::new(self.read_buffer.as_ref().unwrap(), length))
     }
 
     fn advance_to_next_block(&mut self) {
@@ -699,7 +1099,37 @@ impl ReadClient {
         self.current_block_starting_frame_in_file + self.current_frame_in_block
     }
 
-    pub fn num_channels(&self) -> usize {
-        self.num_channels
+    pub fn info(&self) -> &FileInfo {
+        &self.file_info
+    }
+}
+
+impl Drop for ReadClient {
+    fn drop(&mut self) {
+        // Tell the server to deallocate any heap data.
+
+        for entry in self.prefetch_buffer.iter_mut() {
+            if let Some(block) = entry.block.take() {
+                self.to_server_tx
+                    .push(ClientToServerMsg::DisposeBlock { block })
+                    .expect("Client to Server channel full");
+            }
+        }
+
+        if let Some(block) = self.read_buffer.take() {
+            self.to_server_tx
+                .push(ClientToServerMsg::DisposeBlock { block })
+                .expect("Client to Server channel full");
+        }
+
+        if let Some(caches) = self.caches.take() {
+            self.to_server_tx
+                .push(ClientToServerMsg::DisposeCacheEntries { caches })
+                .expect("Client to Server channel full");
+        }
+
+        self.to_server_tx
+            .push(ClientToServerMsg::Close)
+            .expect("Client to Server channel full");
     }
 }

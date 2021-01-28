@@ -1,24 +1,17 @@
 mod client;
 mod data;
+mod decoder;
 mod server;
 
-pub mod error;
-
-pub(crate) use data::{DataBlock, DataBlockCache, DataBlockCacheEntry, DataBlockEntry, HeapData};
+pub(crate) use data::{DataBlockCache, DataBlockCacheEntry, DataBlockEntry, HeapData};
 pub(crate) use server::ReadServer;
 
-pub use client::ReadClient;
+pub use client::{ReadClient, ReadError};
+pub use data::DataBlock;
 pub use data::ReadData;
+pub use decoder::{Decoder, FileInfo};
 
-pub struct FileInfo {
-    pub params: symphonia::core::codecs::CodecParameters,
-
-    pub num_frames: usize,
-    pub num_channels: usize,
-    pub sample_rate: u32,
-}
-
-pub(crate) enum ServerToClientMsg {
+pub(crate) enum ServerToClientMsg<D: Decoder> {
     ReadIntoBlockRes {
         block_index: usize,
         block: DataBlock,
@@ -27,7 +20,7 @@ pub(crate) enum ServerToClientMsg {
         cache_index: usize,
         cache: DataBlockCache,
     },
-    FatalError(symphonia::core::errors::Error),
+    FatalError(D::FatalError),
 }
 
 pub(crate) enum ClientToServerMsg {

@@ -1,9 +1,9 @@
 use crate::{BLOCK_SIZE, NUM_PREFETCH_BLOCKS};
 
-pub(crate) struct DataBlock {
+pub struct DataBlock {
     pub block: Vec<[f32; BLOCK_SIZE]>,
     pub starting_frame_in_file: usize,
-    pub wanted_start_smp: usize,
+    pub(crate) wanted_start_smp: usize,
 }
 
 impl DataBlock {

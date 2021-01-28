@@ -441,3 +441,14 @@ fn wrap_frame(mut frame: usize, len: usize) -> usize {
     }
     frame
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_server_build() {
+        let (mut open_tx, mut open_rx) = RingBuffer::<Result<FileInfo, OpenError>>::new(1).split();
+    }
+}

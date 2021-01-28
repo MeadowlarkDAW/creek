@@ -5,8 +5,10 @@ use rtrb::RingBuffer;
 
 mod read;
 
-pub use read::error::*;
-pub use read::{FileInfo, ReadClient};
+pub use read::{
+    error::{OpenError, ReadError},
+    FileInfo, ReadClient,
+};
 
 use read::{ClientToServerMsg, HeapData, ReadServer, ServerToClientMsg};
 

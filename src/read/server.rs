@@ -14,7 +14,8 @@ pub(crate) struct ReadServer<D: Decoder + 'static> {
     close_signal_rx: Consumer<Option<HeapData>>,
 
     decoder: D,
-    file_info: FileInfo<D::Params>,
+    
+    num_channels: usize,
 
     block_pool: Vec<DataBlock>,
     cache_pool: Vec<DataBlockCache>,
@@ -36,15 +37,17 @@ impl<D: Decoder + 'static> ReadServer<D> {
         std::thread::spawn(move || {
             match D::new(file, start_frame_in_file) {
                 Ok((decoder, file_info)) => {
+                    let num_channels = file_info.num_channels;
+
                     // Push cannot fail because only one message is ever sent.
-                    let _ = open_tx.push(Ok(file_info.clone()));
+                    let _ = open_tx.push(Ok(file_info));
 
                     ReadServer::run(Self {
                         to_client_tx,
                         from_client_rx,
                         close_signal_rx,
                         decoder,
-                        file_info,
+                        num_channels,
                         block_pool: Vec::new(),
                         cache_pool: Vec::new(),
                         run: true,
@@ -87,7 +90,7 @@ impl<D: Decoder + 'static> ReadServer<D> {
                             // Try using one in the pool if it exists.
                             self.block_pool.pop().unwrap_or(
                                 // No blocks in pool. Create a new one.
-                                DataBlock::new(self.file_info.num_channels),
+                                DataBlock::new(self.num_channels),
                             ),
                         );
 
@@ -128,7 +131,7 @@ impl<D: Decoder + 'static> ReadServer<D> {
                             // Try using one in the pool if it exists.
                             self.cache_pool.pop().unwrap_or(
                                 // No caches in pool. Create a new one.
-                                DataBlockCache::new(self.file_info.num_channels),
+                                DataBlockCache::new(self.num_channels),
                             ),
                         );
 

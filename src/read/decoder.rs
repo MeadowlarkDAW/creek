@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use super::DataBlock;
 
 #[derive(Clone)]
-pub struct FileInfo<Params: Send + Clone> {
+pub struct FileInfo<Params: Send> {
     pub params: Params,
 
     pub num_frames: usize,
@@ -16,7 +16,7 @@ pub trait Decoder: Sized {
     type OpenError: 'static + Error + Send;
     type DecodeWarning: Error + Send;
     type FatalError: Error + Send;
-    type Params: Send + Clone;
+    type Params: Send;
 
     fn new(
         file: PathBuf,

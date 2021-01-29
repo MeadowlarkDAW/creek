@@ -1,9 +1,9 @@
 use crate::{BLOCK_SIZE, NUM_PREFETCH_BLOCKS};
 
-pub(crate) struct DataBlock {
+pub struct DataBlock {
     pub block: Vec<[f32; BLOCK_SIZE]>,
-    pub starting_frame_in_file: usize,
-    pub wanted_start_smp: usize,
+    pub start_frame: usize,
+    pub(crate) wanted_start_frame: usize,
 }
 
 impl DataBlock {
@@ -18,15 +18,15 @@ impl DataBlock {
 
         DataBlock {
             block,
-            starting_frame_in_file: 0,
-            wanted_start_smp: 0,
+            start_frame: 0,
+            wanted_start_frame: 0,
         }
     }
 }
 
 pub(crate) struct DataBlockCache {
     pub blocks: [DataBlock; NUM_PREFETCH_BLOCKS],
-    pub wanted_start_smp: usize,
+    pub wanted_start_frame: usize,
 }
 
 impl DataBlockCache {
@@ -42,7 +42,7 @@ impl DataBlockCache {
 
         Self {
             blocks,
-            wanted_start_smp: 0,
+            wanted_start_frame: 0,
         }
     }
 }
@@ -50,12 +50,12 @@ impl DataBlockCache {
 pub(crate) struct DataBlockEntry {
     pub use_cache: Option<usize>,
     pub block: Option<DataBlock>,
-    pub wanted_start_smp: usize,
+    pub wanted_start_frame: usize,
 }
 
 pub(crate) struct DataBlockCacheEntry {
     pub cache: Option<DataBlockCache>,
-    pub wanted_start_smp: usize,
+    pub wanted_start_frame: usize,
 }
 
 pub(crate) struct HeapData {

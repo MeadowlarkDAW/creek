@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::time;
 
@@ -6,7 +5,7 @@ use rtrb::RingBuffer;
 
 mod read;
 
-pub use read::{Decoder, FileInfo, ReadClient, ReadError};
+pub use read::{Decoder, FileInfo, OpenError, ReadClient, ReadError};
 
 use read::{ClientToServerMsg, HeapData, ReadServer, ServerToClientMsg};
 
@@ -17,20 +16,19 @@ pub const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);
 
 static SILENCE_BUFFER: [f32; BLOCK_SIZE] = [0.0; BLOCK_SIZE];
 
-pub struct AudioDiskStream<D: Decoder + 'static> {
-    phantom: PhantomData<D>,
-}
+pub struct AudioDiskStream {}
 
-impl<D: Decoder + 'static> AudioDiskStream<D> {
+impl AudioDiskStream {
     pub fn open_read<P: Into<PathBuf>>(
         file: P,
-        start_frame_in_file: usize,
+        start_frame: usize,
         max_num_caches: usize,
-    ) -> Result<ReadClient<D>, D::OpenError> {
+        decode_verify: bool,
+    ) -> Result<ReadClient, OpenError> {
         let (to_server_tx, from_client_rx) =
             RingBuffer::<ClientToServerMsg>::new(MSG_CHANNEL_SIZE).split();
         let (to_client_tx, from_server_rx) =
-            RingBuffer::<ServerToClientMsg<D>>::new(MSG_CHANNEL_SIZE).split();
+            RingBuffer::<ServerToClientMsg>::new(MSG_CHANNEL_SIZE).split();
 
         // Create dedicated close signal.
         let (close_tx, close_rx) = RingBuffer::<Option<HeapData>>::new(1).split();
@@ -39,7 +37,8 @@ impl<D: Decoder + 'static> AudioDiskStream<D> {
 
         match ReadServer::new(
             file,
-            start_frame_in_file,
+            decode_verify,
+            start_frame,
             to_client_tx,
             from_client_rx,
             close_rx,
@@ -49,7 +48,7 @@ impl<D: Decoder + 'static> AudioDiskStream<D> {
                     to_server_tx,
                     from_server_rx,
                     close_tx,
-                    start_frame_in_file,
+                    start_frame,
                     max_num_caches,
                     file_info,
                 );

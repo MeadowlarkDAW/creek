@@ -24,7 +24,7 @@ pub(crate) struct ReadServer {
     run: bool,
 }
 
-impl ReadServer {
+impl<D: Decoder + 'static> ReadServer<D> {
     pub fn new(
         file: PathBuf,
         verify: bool,
@@ -32,8 +32,9 @@ impl ReadServer {
         to_client_tx: Producer<ServerToClientMsg>,
         from_client_rx: Consumer<ClientToServerMsg>,
         close_signal_rx: Consumer<Option<HeapData>>,
-    ) -> Result<FileInfo, OpenError> {
-        let (mut open_tx, mut open_rx) = RingBuffer::<Result<FileInfo, OpenError>>::new(1).split();
+    ) -> Result<FileInfo<D::Params>, D::OpenError> {
+        let (mut open_tx, mut open_rx) =
+            RingBuffer::<Result<FileInfo<D::Params>, D::OpenError>>::new(1).split();
 
         std::thread::spawn(move || {
             match Decoder::new(file, start_frame, verify) {
@@ -176,7 +177,7 @@ impl ReadServer {
         }
     }
 
-    fn send_msg(&mut self, msg: ServerToClientMsg) {
+    fn send_msg(&mut self, msg: ServerToClientMsg<D>) {
         // Block until message can be sent.
         loop {
             if !self.to_client_tx.is_full() {

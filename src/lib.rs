@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::time;
 
@@ -5,10 +6,7 @@ use rtrb::RingBuffer;
 
 mod read;
 
-pub use read::{
-    error::{OpenError, ReadError},
-    FileInfo, ReadClient,
-};
+pub use read::{Decoder, FileInfo, ReadClient, ReadError};
 
 use read::{ClientToServerMsg, HeapData, ReadServer, ServerToClientMsg};
 
@@ -19,19 +17,20 @@ pub const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);
 
 static SILENCE_BUFFER: [f32; BLOCK_SIZE] = [0.0; BLOCK_SIZE];
 
-pub struct AudioDiskStream {}
+pub struct AudioDiskStream<D: Decoder + 'static> {
+    phantom: PhantomData<D>,
+}
 
-impl AudioDiskStream {
+impl<D: Decoder + 'static> AudioDiskStream<D> {
     pub fn open_read<P: Into<PathBuf>>(
         file: P,
         start_frame_in_file: usize,
         max_num_caches: usize,
-        decode_verify: bool,
-    ) -> Result<ReadClient, OpenError> {
+    ) -> Result<ReadClient<D>, D::OpenError> {
         let (to_server_tx, from_client_rx) =
             RingBuffer::<ClientToServerMsg>::new(MSG_CHANNEL_SIZE).split();
         let (to_client_tx, from_server_rx) =
-            RingBuffer::<ServerToClientMsg>::new(MSG_CHANNEL_SIZE).split();
+            RingBuffer::<ServerToClientMsg<D>>::new(MSG_CHANNEL_SIZE).split();
 
         // Create dedicated close signal.
         let (close_tx, close_rx) = RingBuffer::<Option<HeapData>>::new(1).split();
@@ -40,7 +39,6 @@ impl AudioDiskStream {
 
         match ReadServer::new(
             file,
-            decode_verify,
             start_frame_in_file,
             to_client_tx,
             from_client_rx,

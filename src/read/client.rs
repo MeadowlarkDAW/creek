@@ -1,16 +1,58 @@
 use rtrb::{Consumer, Producer};
+use std::error::Error;
+use std::fmt::Debug;
 
 use crate::{BLOCK_SIZE, NUM_PREFETCH_BLOCKS, SERVER_WAIT_TIME, SILENCE_BUFFER};
 
-use super::error::ReadError;
 use super::{
-    ClientToServerMsg, DataBlock, DataBlockCacheEntry, DataBlockEntry, FileInfo, HeapData,
+    ClientToServerMsg, DataBlock, DataBlockCacheEntry, DataBlockEntry, Decoder, FileInfo, HeapData,
     ReadData, ServerToClientMsg,
 };
 
-pub struct ReadClient {
+#[derive(Debug)]
+pub enum ReadError<FatalError: Error> {
+    FatalError(FatalError),
+    CacheIndexOutOfRange { index: usize, caches_len: usize },
+    MsgChannelFull,
+    ReadLengthOutOfRange(usize),
+    ServerClosed,
+    UnknownFatalError,
+}
+
+impl<FatalError: Error> std::error::Error for ReadError<FatalError> {}
+
+impl<FatalError: Error> std::fmt::Display for ReadError<FatalError> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReadError::FatalError(e) => write!(f, "Fatal error: {:?}", e),
+            ReadError::CacheIndexOutOfRange { index, caches_len } => {
+                write!(
+                    f,
+                    "Cache index {} is out of range of the length of allocated caches {}",
+                    index, caches_len
+                )
+            }
+            ReadError::MsgChannelFull => write!(f, "The message channel to the server is full."),
+            ReadError::ReadLengthOutOfRange(len) => write!(
+                f,
+                "Read length {} is out of range of maximum {}",
+                len, BLOCK_SIZE
+            ),
+            ReadError::ServerClosed => write!(f, "Server closed unexpectedly"),
+            ReadError::UnknownFatalError => write!(f, "An unkown fatal error occurred"),
+        }
+    }
+}
+
+impl<FatalError: Error> From<FatalError> for ReadError<FatalError> {
+    fn from(e: FatalError) -> Self {
+        Self::FatalError(e)
+    }
+}
+
+pub struct ReadClient<D: Decoder> {
     to_server_tx: Producer<ClientToServerMsg>,
-    from_server_rx: Consumer<ServerToClientMsg>,
+    from_server_rx: Consumer<ServerToClientMsg<D>>,
     close_signal_tx: Producer<Option<HeapData>>,
 
     heap_data: Option<HeapData>,
@@ -20,18 +62,18 @@ pub struct ReadClient {
     current_block_start_frame: usize,
     current_frame_in_block: usize,
 
-    file_info: FileInfo,
+    file_info: FileInfo<D::Params>,
     error: bool,
 }
 
-impl ReadClient {
+impl<D: Decoder> ReadClient<D> {
     pub(crate) fn new(
         to_server_tx: Producer<ClientToServerMsg>,
-        from_server_rx: Consumer<ServerToClientMsg>,
+        from_server_rx: Consumer<ServerToClientMsg<D>>,
         close_signal_tx: Producer<Option<HeapData>>,
         start_frame: usize,
         max_num_caches: usize,
-        file_info: FileInfo,
+        file_info: FileInfo<D::Params>,
     ) -> Self {
         let read_buffer = DataBlock::new(file_info.num_channels);
 
@@ -188,7 +230,7 @@ impl ReadClient {
     ///
     /// Note the `read()` method can still be called if this returns false,
     /// it will just output silence instead.
-    pub fn is_ready(&mut self) -> Result<bool, ReadError> {
+    pub fn is_ready(&mut self) -> Result<bool, ReadError<D::FatalError>> {
         self.poll()?;
 
         // This check should never fail because it can only be `None` in the destructor.
@@ -228,7 +270,7 @@ impl ReadClient {
     }
 
     // This should not be used in a real-time situation.
-    pub fn block_until_ready(&mut self) -> Result<(), ReadError> {
+    pub fn block_until_ready(&mut self) -> Result<(), ReadError<D::FatalError>> {
         loop {
             if self.is_ready()? {
                 break;
@@ -240,7 +282,7 @@ impl ReadClient {
         Ok(())
     }
 
-    fn poll(&mut self) -> Result<(), ReadError> {
+    fn poll(&mut self) -> Result<(), ReadError<D::FatalError>> {
         // Retrieve any data sent from the server.
 
         // This check should never fail because it can only be `None` in the destructor.
@@ -322,7 +364,7 @@ impl ReadClient {
     }
 
     /// Read the next slice of data with length `length`.
-    pub fn read(&mut self, length: usize) -> Result<ReadData, ReadError> {
+    pub fn read(&mut self, length: usize) -> Result<ReadData, ReadError<D::FatalError>> {
         if self.error {
             return Err(ReadError::ServerClosed);
         }
@@ -529,7 +571,7 @@ impl ReadClient {
         Ok(ReadData::new(&heap.read_buffer, length))
     }
 
-    fn advance_to_next_block(&mut self) -> Result<(), ReadError> {
+    fn advance_to_next_block(&mut self) -> Result<(), ReadError<D::FatalError>> {
         // This check should never fail because it can only be `None` in the destructor.
         let heap = self
             .heap_data
@@ -574,12 +616,12 @@ impl ReadClient {
         self.current_block_start_frame + self.current_frame_in_block
     }
 
-    pub fn info(&self) -> &FileInfo {
+    pub fn info(&self) -> &FileInfo<D::Params> {
         &self.file_info
     }
 }
 
-impl Drop for ReadClient {
+impl<D: Decoder> Drop for ReadClient<D> {
     fn drop(&mut self) {
         // Tell the server to deallocate any heap data.
         // This cannot fail because this is the only place the signal is ever sent.

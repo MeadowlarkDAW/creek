@@ -13,6 +13,11 @@ readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[workspace]
+members = [
+    "examples/demo_player",
+]
+
 [dependencies]
 rtrb = "0.1.2"
 #symphonia = { version = "0.1.0", features = ["mp3"] }

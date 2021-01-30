@@ -255,3 +255,42 @@ fn wrap_frame(mut frame: usize, len: usize) -> usize {
     }
     frame
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decoder_new() {
+        let files = vec![
+            //  file | num_channels | num_frames | sample_rate
+            ("./test_files/wav_u8_mono.wav", 1, 1323000, Some(44100)),
+            ("./test_files/wav_i16_mono.wav", 1, 1323000, Some(44100)),
+            ("./test_files/wav_i24_mono.wav", 1, 1323000, Some(44100)),
+            ("./test_files/wav_i32_mono.wav", 1, 1323000, Some(44100)),
+            ("./test_files/wav_f32_mono.wav", 1, 1323000, Some(44100)),
+            ("./test_files/wav_i24_stereo.wav", 2, 1323000, Some(44100)),
+            //"./test_files/ogg_mono.ogg",
+            //"./test_files/ogg_stereo.ogg",
+            //"./test_files/mp3_constant_mono.mp3",
+            //"./test_files/mp3_constant_stereo.mp3",
+            //"./test_files/mp3_variable_mono.mp3",
+            //"./test_files/mp3_variable_stereo.mp3",
+        ];
+
+        for file in files {
+            dbg!(file.0);
+            let decoder = Decoder::new(file.0.into(), 0, false);
+            match decoder {
+                Ok((_, file_info)) => {
+                    assert_eq!(file_info.num_channels, file.1);
+                    assert_eq!(file_info.num_frames, file.2);
+                    assert_eq!(file_info.sample_rate, file.3);
+                }
+                Err(e) => {
+                    panic!(e)
+                }
+            }
+        }
+    }
+}

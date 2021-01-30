@@ -15,4 +15,5 @@ readme = "README.md"
 
 [dependencies]
 rtrb = "0.1.2"
-symphonia = { version = "0.1.0", features = ["mp3"] }
+#symphonia = { version = "0.1.0", features = ["mp3"] }
+symphonia = { git = "https://github.com/pdeljanov/Symphonia.git", branch = "master" }

@@ -10,3 +10,6 @@ publish = false
 [dependencies]
 rt-audio-disk-stream = { path = "../../" }
 eframe = "0.8.0"
+rtrb = "0.1.2"
+symphonia = { git = "https://github.com/pdeljanov/Symphonia.git", branch = "master" }
+cpal = "0.13.1"

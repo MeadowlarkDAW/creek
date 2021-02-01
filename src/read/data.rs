@@ -60,7 +60,7 @@ pub(crate) struct DataBlockCacheEntry {
 
 pub(crate) struct HeapData {
     pub read_buffer: DataBlock,
-    pub prefetch_buffer: [DataBlockEntry; NUM_PREFETCH_BLOCKS],
+    pub prefetch_buffer: Vec<DataBlockEntry>,
     pub caches: Vec<DataBlockCacheEntry>,
 }
 

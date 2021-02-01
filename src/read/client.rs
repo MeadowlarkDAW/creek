@@ -42,17 +42,14 @@ impl ReadClient {
             });
         }
 
-        // Safe because we initialize the values in the next step.
-        let mut prefetch_buffer: [DataBlockEntry; NUM_PREFETCH_BLOCKS] = unsafe {
-            std::mem::MaybeUninit::<[DataBlockEntry; NUM_PREFETCH_BLOCKS]>::uninit().assume_init()
-        };
+        let mut prefetch_buffer: Vec<DataBlockEntry> = Vec::with_capacity(NUM_PREFETCH_BLOCKS);
         let mut wanted_start_frame = start_frame;
-        for entry in prefetch_buffer.iter_mut() {
-            *entry = DataBlockEntry {
+        for _ in 0..NUM_PREFETCH_BLOCKS {
+            prefetch_buffer.push(DataBlockEntry {
                 use_cache: None,
                 block: None,
                 wanted_start_frame,
-            };
+            });
 
             wanted_start_frame += BLOCK_SIZE;
         }
@@ -321,13 +318,13 @@ impl ReadClient {
     }
 
     /// Read the next slice of data with length `length`.
-    pub fn read(&mut self, length: usize) -> Result<ReadData, ReadError> {
+    pub fn read(&mut self, frames: usize) -> Result<ReadData, ReadError> {
         if self.error {
             return Err(ReadError::ServerClosed);
         }
 
-        if length > BLOCK_SIZE {
-            return Err(ReadError::ReadLengthOutOfRange(length));
+        if frames > BLOCK_SIZE {
+            return Err(ReadError::ReadLengthOutOfRange(frames));
         }
 
         self.poll()?;
@@ -337,13 +334,13 @@ impl ReadClient {
             return Err(ReadError::MsgChannelFull);
         }
 
-        let end_frame_in_block = self.current_frame_in_block + length;
+        let end_frame_in_block = self.current_frame_in_block + frames;
         if end_frame_in_block > BLOCK_SIZE {
             // Data spans between two blocks, so two copies need to be performed.
 
             // Copy from first block.
             let first_len = BLOCK_SIZE - self.current_frame_in_block;
-            let second_len = length - first_len;
+            let second_len = frames - first_len;
             {
                 // This check should never fail because it can only be `None` in the destructor.
                 let heap = self
@@ -479,14 +476,14 @@ impl ReadClient {
                 };
 
                 for i in 0..heap.read_buffer.block.len() {
-                    let read_buffer_part = &mut heap.read_buffer.block[i][0..length];
+                    let read_buffer_part = &mut heap.read_buffer.block[i][0..frames];
 
                     let from_buffer_part = if let Some(block) = current_block_data {
                         &block.block[i]
-                            [self.current_frame_in_block..self.current_frame_in_block + length]
+                            [self.current_frame_in_block..self.current_frame_in_block + frames]
                     } else {
                         // Output silence.
-                        &SILENCE_BUFFER[0..length]
+                        &SILENCE_BUFFER[0..frames]
                     };
 
                     read_buffer_part.copy_from_slice(from_buffer_part);
@@ -525,7 +522,7 @@ impl ReadClient {
             .ok_or_else(|| ReadError::UnknownFatalError)?;
 
         // This check should never fail because it can only be `None` in the destructor.
-        Ok(ReadData::new(&heap.read_buffer, length))
+        Ok(ReadData::new(&heap.read_buffer, frames))
     }
 
     fn advance_to_next_block(&mut self) -> Result<(), ReadError> {

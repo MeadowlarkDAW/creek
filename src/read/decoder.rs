@@ -35,6 +35,8 @@ pub struct Decoder {
     num_channels: usize,
     sample_rate: Option<u32>,
 
+    decoder_opts: DecoderOptions,
+
     current_frame: usize,
     did_just_sync: bool,
 }
@@ -149,6 +151,8 @@ impl Decoder {
                 num_channels,
                 sample_rate,
 
+                decoder_opts,
+
                 current_frame: start_frame,
                 did_just_sync: false,
             },
@@ -165,7 +169,9 @@ impl Decoder {
             time: seconds.into(),
         })?;
 
-        self.did_just_sync = true;
+        self.decoder.close();
+        self.decoder = symphonia::default::get_codecs()
+            .make(self.decoder.codec_params(), &self.decoder_opts)?;
 
         Ok(())
     }

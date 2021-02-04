@@ -1,17 +1,22 @@
+use std::thread::sleep;
+
 use eframe::{egui, epi};
 use rt_audio_disk_stream::AudioDiskStream;
-use rtrb::{Consumer, Producer};
+use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
 
 pub struct DemoPlayerApp {
     playing: bool,
     current_frame: usize,
-    max_frame: usize,
+    num_frames: usize,
     transport_control: TransportControl,
 
     to_player_tx: Producer<GuiToProcessMsg>,
     from_player_rx: Consumer<ProcessToGuiMsg>,
+
+    frame_close_tx: Producer<()>,
+    frame_close_rx: Option<Consumer<()>>,
 }
 
 impl DemoPlayerApp {
@@ -22,18 +27,32 @@ impl DemoPlayerApp {
         let mut test_client =
             AudioDiskStream::open_read("./test_files/wav_i24_stereo.wav", 0, 2, true).unwrap();
 
-        test_client.seek_to_cache(0, 0).unwrap();
+        test_client.seek_to(0, 0).unwrap();
         test_client.block_until_ready().unwrap();
 
+        let num_frames = test_client.info().num_frames;
+
         to_player_tx
-            .push(GuiToProcessMsg::PlayStream(test_client))
+            .push(GuiToProcessMsg::UseStream(test_client))
             .unwrap();
+
+        to_player_tx
+            .push(GuiToProcessMsg::SetLoop {
+                start: 0,
+                end: num_frames,
+            })
+            .unwrap();
+
+        let (frame_close_tx, frame_close_rx) = RingBuffer::new(1).split();
 
         Self {
             playing: false,
             current_frame: 0,
-            max_frame: 10000,
+            num_frames,
             transport_control: Default::default(),
+
+            frame_close_tx,
+            frame_close_rx: Some(frame_close_rx),
 
             to_player_tx,
             from_player_rx,
@@ -47,18 +66,59 @@ impl epi::App for DemoPlayerApp {
     }
 
     fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+        if let Some(mut frame_close_rx) = self.frame_close_rx.take() {
+            // Spawn thread that calls a repaint 60 times a second.
+
+            let repaint_signal = frame.repaint_signal().clone();
+
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs_f64(1.0 / 60.0));
+
+                    // Check if app has closed.
+                    if let Ok(_) = frame_close_rx.pop() {
+                        break;
+                    }
+
+                    repaint_signal.request_repaint();
+                }
+            });
+        }
+
+        while let Ok(msg) = self.from_player_rx.pop() {
+            match msg {
+                ProcessToGuiMsg::TransportPos(pos) => {
+                    self.current_frame = pos;
+                }
+            }
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
 
             let play_label = if self.playing { "||" } else { ">" };
 
             if ui.button(play_label).clicked {
-                self.playing = !self.playing;
+                if self.playing {
+                    self.playing = false;
+
+                    self.to_player_tx.push(GuiToProcessMsg::Pause).unwrap();
+                } else {
+                    self.playing = true;
+
+                    self.to_player_tx.push(GuiToProcessMsg::PlayResume).unwrap();
+                }
             }
 
             self.transport_control
-                .ui(ui, &mut self.current_frame, self.max_frame);
+                .ui(ui, &mut self.current_frame, self.num_frames);
         });
+    }
+}
+
+impl Drop for DemoPlayerApp {
+    fn drop(&mut self) {
+        self.frame_close_tx.push(()).unwrap();
     }
 }
 

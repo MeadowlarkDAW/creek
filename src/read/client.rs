@@ -136,11 +136,7 @@ impl ReadClient {
         Ok(true)
     }
 
-    pub fn seek_to_cache(
-        &mut self,
-        cache_index: usize,
-        start_frame: usize,
-    ) -> Result<bool, ReadError> {
+    pub fn seek_to(&mut self, cache_index: usize, start_frame: usize) -> Result<bool, ReadError> {
         if self.error {
             return Err(ReadError::ServerClosed);
         }
@@ -561,7 +557,7 @@ impl ReadClient {
         Ok(())
     }
 
-    pub fn current_file_sample(&self) -> usize {
+    pub fn current_frame(&self) -> usize {
         self.current_block_start_frame + self.current_frame_in_block
     }
 

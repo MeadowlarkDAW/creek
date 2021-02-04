@@ -79,7 +79,7 @@ impl<'a> ReadData<'a> {
         self.data.block.len()
     }
 
-    pub fn buffer_len(&self) -> usize {
+    pub fn num_frames(&self) -> usize {
         self.len
     }
 }

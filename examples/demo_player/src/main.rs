@@ -6,13 +6,21 @@ mod process;
 mod ui;
 
 pub enum GuiToProcessMsg {
-    PlayStream(ReadClient),
+    UseStream(ReadClient),
+    SetLoop { start: usize, end: usize },
+    PlayResume,
+    Pause,
+    Stop,
+    Restart,
+    SeekTo(usize),
 }
 
-pub enum ProcessToGuiMsg {}
+pub enum ProcessToGuiMsg {
+    TransportPos(usize),
+}
 
 fn main() {
-    let (to_gui_tx, from_process_rx) = RingBuffer::<ProcessToGuiMsg>::new(64).split();
+    let (to_gui_tx, from_process_rx) = RingBuffer::<ProcessToGuiMsg>::new(256).split();
     let (to_process_tx, from_gui_rx) = RingBuffer::<GuiToProcessMsg>::new(64).split();
 
     let app = ui::DemoPlayerApp::new(to_process_tx, from_process_rx);

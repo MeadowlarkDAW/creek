@@ -279,7 +279,6 @@ impl ReadClient {
                         }
                     }
                     ServerToClientMsg::CacheRes { cache_index, cache } => {
-                        // This check should never fail because it can only be `None` in the destructor.
                         let cache_entry = &mut heap.caches[cache_index];
 
                         // Only use results from the latest request.
@@ -405,7 +404,6 @@ impl ReadClient {
                     let next_block = &heap.prefetch_buffer[self.current_block_index];
 
                     if let Some(cache_index) = next_block.use_cache {
-                        // This check should never fail because it can only be `None` in the destructor.
                         if let Some(cache) = &heap.caches[cache_index].cache {
                             let start_frame = cache.blocks[self.current_block_index].start_frame;
                             (Some(&cache.blocks[self.current_block_index]), start_frame)
@@ -456,7 +454,6 @@ impl ReadClient {
                     let current_block = &heap.prefetch_buffer[self.current_block_index];
 
                     if let Some(cache_index) = current_block.use_cache {
-                        // This check should never fail because it can only be `None` in the destructor.
                         if let Some(cache) = &heap.caches[cache_index].cache {
                             let start_frame = cache.blocks[self.current_block_index].start_frame;
                             (Some(&cache.blocks[self.current_block_index]), start_frame)
@@ -504,13 +501,11 @@ impl ReadClient {
                     .as_mut()
                     .ok_or_else(|| ReadError::UnknownFatalError)?;
 
-                self.current_block_start_frame = if let Some(next_block) =
-                    &heap.prefetch_buffer[self.current_block_index].block
-                {
-                    next_block.start_frame
-                } else {
-                    self.current_block_start_frame + BLOCK_SIZE
+                // Keep this from growing indefinitely.
+                if let Some(next_block) = &heap.prefetch_buffer[self.current_block_index].block {
+                    self.current_block_start_frame = next_block.start_frame
                 };
+
                 self.current_frame_in_block = 0;
             }
         }

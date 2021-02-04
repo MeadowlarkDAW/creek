@@ -1,5 +1,6 @@
-use std::fs::File;
+use core::num;
 use std::path::PathBuf;
+use std::{fs::File, ptr::null_mut};
 
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{CodecParameters, Decoder as SymphDecoder, DecoderOptions};
@@ -29,7 +30,8 @@ pub struct Decoder {
     reader: Box<dyn FormatReader>,
     decoder: Box<dyn SymphDecoder>,
 
-    sample_buf: SampleBuffer<f32>,
+    smp_buf: SampleBuffer<f32>,
+    curr_smp_buf_i: usize,
 
     num_frames: usize,
     num_channels: usize,
@@ -38,7 +40,7 @@ pub struct Decoder {
     decoder_opts: DecoderOptions,
 
     current_frame: usize,
-    did_just_sync: bool,
+    reset_smp_buffer: bool,
 }
 
 impl Decoder {
@@ -89,9 +91,6 @@ impl Decoder {
         let num_channels = (params.channels.ok_or_else(|| OpenError::NoNumChannels)?).count();
         let sample_rate = params.sample_rate;
 
-        // Create a decoder for the stream.
-        let mut decoder = symphonia::default::get_codecs().make(&params, &decoder_opts)?;
-
         // Seek the reader to the requested position.
         if start_frame != 0 {
             start_frame = wrap_frame(start_frame, num_frames);
@@ -103,21 +102,24 @@ impl Decoder {
             })?;
         }
 
+        // Create a decoder for the stream.
+        let mut decoder = symphonia::default::get_codecs().make(&params, &decoder_opts)?;
+
         // Decode the first packet to get the signal specification.
-        let sample_buf = loop {
+        let smp_buf = loop {
             match decoder.decode(&reader.next_packet()?) {
                 Ok(decoded) => {
                     // Get the buffer spec.
                     let spec = *decoded.spec();
 
-                    // Get the buffer duration.
-                    let duration = Duration::from(decoded.capacity() as u64);
+                    // Get the buffer capacity.
+                    let capacity = Duration::from(decoded.capacity() as u64);
 
-                    let mut sample_buf = SampleBuffer::<f32>::new(duration, spec);
+                    let mut smp_buf = SampleBuffer::<f32>::new(capacity, spec);
 
-                    sample_buf.copy_interleaved_ref(decoded);
+                    smp_buf.copy_interleaved_ref(decoded);
 
-                    break sample_buf;
+                    break smp_buf;
                 }
                 Err(Error::DecodeError(e)) => {
                     // Decode errors are not fatal. Send a warning and try to decode the next packet.
@@ -145,7 +147,8 @@ impl Decoder {
                 reader,
                 decoder,
 
-                sample_buf,
+                smp_buf,
+                curr_smp_buf_i: 0,
 
                 num_frames,
                 num_channels,
@@ -154,7 +157,7 @@ impl Decoder {
                 decoder_opts,
 
                 current_frame: start_frame,
-                did_just_sync: false,
+                reset_smp_buffer: false,
             },
             file_info,
         ))
@@ -169,56 +172,81 @@ impl Decoder {
             time: seconds.into(),
         })?;
 
+        self.reset_smp_buffer = true;
+
+        /*
         self.decoder.close();
         self.decoder = symphonia::default::get_codecs()
             .make(self.decoder.codec_params(), &self.decoder_opts)?;
+            */
 
         Ok(())
     }
 
     pub fn decode_into(&mut self, data_block: &mut DataBlock) -> Result<(), ReadError> {
-        let mut frames_left = BLOCK_SIZE;
-        while frames_left != 0 {
-            if self.sample_buf.len() != 0 && !self.did_just_sync {
-                let num_new_frames = (self.sample_buf.len() / self.num_channels).min(frames_left);
+        let mut block_start = 0;
+        while block_start < BLOCK_SIZE {
+            let num_frames_to_cpy = if self.reset_smp_buffer {
+                // Get new data first.
+                self.reset_smp_buffer = false;
+                0
+            } else if self.smp_buf.len() < self.num_channels {
+                // Get new data first.
+                0
+            } else {
+                // Find the maximum amount of frames that can be copied.
+                (BLOCK_SIZE - block_start)
+                    .min((self.smp_buf.len() - self.curr_smp_buf_i) / self.num_channels)
+            };
 
+            if num_frames_to_cpy != 0 {
                 if self.num_channels == 1 {
                     // Mono, no need to deinterleave.
-                    &mut data_block.block[0][0..num_new_frames]
-                        .copy_from_slice(&self.sample_buf.samples()[0..num_new_frames]);
+                    &mut data_block.block[0][block_start..block_start + num_frames_to_cpy]
+                        .copy_from_slice(
+                            &self.smp_buf.samples()
+                                [self.curr_smp_buf_i..self.curr_smp_buf_i + num_frames_to_cpy],
+                        );
                 } else if self.num_channels == 2 {
-                    // Provide somewhat-efficient stereo deinterleaving.
+                    // Provide efficient stereo deinterleaving.
 
-                    let smp_buf = &self.sample_buf.samples()[0..num_new_frames * 2];
+                    let smp_buf = &self.smp_buf.samples()
+                        [self.curr_smp_buf_i..self.curr_smp_buf_i + (num_frames_to_cpy * 2)];
 
-                    for i in 0..num_new_frames {
-                        data_block.block[0][i] = smp_buf[i * 2];
-                        data_block.block[1][i] = smp_buf[(i * 2) + 1];
+                    let (block1, block2) = data_block.block.split_at_mut(1);
+                    let block1 = &mut block1[0][block_start..block_start + num_frames_to_cpy];
+                    let block2 = &mut block2[0][block_start..block_start + num_frames_to_cpy];
+
+                    for i in 0..num_frames_to_cpy {
+                        block1[i] = smp_buf[i * 2];
+                        block2[i] = smp_buf[(i * 2) + 1];
                     }
                 } else {
-                    let smp_buf =
-                        &self.sample_buf.samples()[0..num_new_frames * data_block.block.len()];
+                    let smp_buf = &self.smp_buf.samples()[self.curr_smp_buf_i
+                        ..self.curr_smp_buf_i + (num_frames_to_cpy * self.num_channels)];
 
-                    for i in 0..num_new_frames {
+                    for i in 0..num_frames_to_cpy {
                         for (ch, block) in data_block.block.iter_mut().enumerate() {
-                            block[i] = smp_buf[(i * self.num_channels) + ch];
+                            block[block_start + i] = smp_buf[(i * self.num_channels) + ch];
                         }
                     }
                 }
 
-                frames_left -= num_new_frames;
-            }
+                block_start += num_frames_to_cpy;
 
-            if frames_left != 0 {
+                self.curr_smp_buf_i += num_frames_to_cpy * self.num_channels;
+                if self.curr_smp_buf_i >= self.smp_buf.len() {
+                    self.reset_smp_buffer = true;
+                }
+            } else {
                 // Decode more packets.
 
-                let mut do_decode = true;
-                while do_decode {
+                loop {
                     match self.decoder.decode(&self.reader.next_packet()?) {
                         Ok(decoded) => {
-                            self.sample_buf.copy_interleaved_ref(decoded);
-                            do_decode = false;
-                            self.did_just_sync = false;
+                            self.smp_buf.copy_interleaved_ref(decoded);
+                            self.curr_smp_buf_i = 0;
+                            break;
                         }
                         Err(Error::DecodeError(e)) => {
                             // Decode errors are not fatal. Print a message and try to decode the next packet as

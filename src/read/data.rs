@@ -25,19 +25,15 @@ impl DataBlock {
 }
 
 pub(crate) struct DataBlockCache {
-    pub blocks: [DataBlock; NUM_PREFETCH_BLOCKS],
+    pub blocks: Vec<DataBlock>,
     pub wanted_start_frame: usize,
 }
 
 impl DataBlockCache {
     pub(crate) fn new(num_channels: usize) -> Self {
-        // Safe because we initialize this in the next step.
-        let mut blocks: [DataBlock; NUM_PREFETCH_BLOCKS] = unsafe {
-            std::mem::MaybeUninit::<[DataBlock; NUM_PREFETCH_BLOCKS]>::uninit().assume_init()
-        };
-
-        for block in blocks.iter_mut() {
-            *block = DataBlock::new(num_channels);
+        let mut blocks: Vec<DataBlock> = Vec::with_capacity(NUM_PREFETCH_BLOCKS);
+        for _ in 0..NUM_PREFETCH_BLOCKS {
+            blocks.push(DataBlock::new(num_channels));
         }
 
         Self {

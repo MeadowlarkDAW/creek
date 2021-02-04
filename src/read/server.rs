@@ -195,7 +195,8 @@ impl ReadServer {
         }
 
         // Push will never fail because we made sure a slot is available in the
-        // previous step (or the server has closed).
+        // previous step (or the stream has closed, in which case an error doesn't
+        // matter).
         let _ = self.to_client_tx.push(msg);
     }
 }

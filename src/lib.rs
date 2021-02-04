@@ -9,9 +9,9 @@ pub use read::{Decoder, FileInfo, OpenError, ReadClient, ReadError};
 
 use read::{ClientToServerMsg, HeapData, ReadServer, ServerToClientMsg};
 
-pub const BLOCK_SIZE: usize = 4096;
-pub const NUM_PREFETCH_BLOCKS: usize = 4;
-pub const MSG_CHANNEL_SIZE: usize = 64;
+pub const BLOCK_SIZE: usize = 8192;
+pub const NUM_PREFETCH_BLOCKS: usize = 20;
+pub const MSG_CHANNEL_SIZE: usize = 128;
 pub const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);
 
 static SILENCE_BUFFER: [f32; BLOCK_SIZE] = [0.0; BLOCK_SIZE];

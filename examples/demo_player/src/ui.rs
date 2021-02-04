@@ -2,7 +2,7 @@ use eframe::{egui, epi};
 use rt_audio_disk_stream::AudioDiskStream;
 use rtrb::{Consumer, Producer};
 
-use crate::{GuiToPlayerMsg, PlayerToGuiMsg};
+use crate::{GuiToProcessMsg, ProcessToGuiMsg};
 
 pub struct DemoPlayerApp {
     playing: bool,
@@ -10,20 +10,23 @@ pub struct DemoPlayerApp {
     max_frame: usize,
     transport_control: TransportControl,
 
-    to_player_tx: Producer<GuiToPlayerMsg>,
-    from_player_rx: Consumer<PlayerToGuiMsg>,
+    to_player_tx: Producer<GuiToProcessMsg>,
+    from_player_rx: Consumer<ProcessToGuiMsg>,
 }
 
 impl DemoPlayerApp {
     pub fn new(
-        mut to_player_tx: Producer<GuiToPlayerMsg>,
-        from_player_rx: Consumer<PlayerToGuiMsg>,
+        mut to_player_tx: Producer<GuiToProcessMsg>,
+        from_player_rx: Consumer<ProcessToGuiMsg>,
     ) -> Self {
-        let test_client =
+        let mut test_client =
             AudioDiskStream::open_read("./test_files/wav_i24_stereo.wav", 0, 2, true).unwrap();
 
+        test_client.seek_to_cache(0, 0).unwrap();
+        test_client.block_until_ready().unwrap();
+
         to_player_tx
-            .push(GuiToPlayerMsg::PlayStream(test_client))
+            .push(GuiToProcessMsg::PlayStream(test_client))
             .unwrap();
 
         Self {

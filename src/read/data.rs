@@ -3,7 +3,6 @@ use crate::{BLOCK_SIZE, NUM_PREFETCH_BLOCKS};
 pub struct DataBlock {
     pub block: Vec<[f32; BLOCK_SIZE]>,
     pub start_frame: usize,
-    pub(crate) wanted_start_frame: usize,
 }
 
 impl DataBlock {
@@ -19,14 +18,12 @@ impl DataBlock {
         DataBlock {
             block,
             start_frame: 0,
-            wanted_start_frame: 0,
         }
     }
 }
 
 pub(crate) struct DataBlockCache {
     pub blocks: Vec<DataBlock>,
-    pub wanted_start_frame: usize,
 }
 
 impl DataBlockCache {
@@ -36,10 +33,7 @@ impl DataBlockCache {
             blocks.push(DataBlock::new(num_channels));
         }
 
-        Self {
-            blocks,
-            wanted_start_frame: 0,
-        }
+        Self { blocks }
     }
 }
 
@@ -64,11 +58,16 @@ pub(crate) struct HeapData {
 pub struct ReadData<'a> {
     data: &'a DataBlock,
     len: usize,
+    reached_end_of_file: bool,
 }
 
 impl<'a> ReadData<'a> {
-    pub(crate) fn new(data: &'a DataBlock, len: usize) -> Self {
-        Self { data, len }
+    pub(crate) fn new(data: &'a DataBlock, len: usize, reached_end_of_file: bool) -> Self {
+        Self {
+            data,
+            len,
+            reached_end_of_file,
+        }
     }
 
     pub fn read_channel(&self, channel: usize) -> &[f32] {
@@ -81,5 +80,9 @@ impl<'a> ReadData<'a> {
 
     pub fn num_frames(&self) -> usize {
         self.len
+    }
+
+    pub fn reached_end_of_file(&self) -> bool {
+        self.reached_end_of_file
     }
 }

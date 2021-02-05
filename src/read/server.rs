@@ -96,13 +96,13 @@ impl ReadServer {
                         );
 
                         block.start_frame = start_frame;
-                        block.wanted_start_frame = start_frame;
 
                         match self.decoder.decode_into(&mut block) {
                             Ok(()) => {
                                 self.send_msg(ServerToClientMsg::ReadIntoBlockRes {
                                     block_index,
                                     block,
+                                    wanted_start_frame: start_frame,
                                 });
                             }
                             Err(e) => {
@@ -136,8 +136,6 @@ impl ReadServer {
                             ),
                         );
 
-                        cache.wanted_start_frame = start_frame;
-
                         let current_frame = self.decoder.current_frame();
 
                         // Seek to the position the client wants to cache.
@@ -163,7 +161,11 @@ impl ReadServer {
                             break;
                         }
 
-                        self.send_msg(ServerToClientMsg::CacheRes { cache_index, cache });
+                        self.send_msg(ServerToClientMsg::CacheRes {
+                            cache_index,
+                            cache,
+                            wanted_start_frame: start_frame,
+                        });
                     }
                     ClientToServerMsg::DisposeCache { cache } => {
                         // Store the cache to be reused.

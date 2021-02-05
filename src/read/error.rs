@@ -41,6 +41,7 @@ impl From<symphonia::core::errors::Error> for OpenError {
 
 #[derive(Debug)]
 pub enum ReadError {
+    EndOfFile,
     FatalError(symphonia::core::errors::Error),
     CacheIndexOutOfRange { index: usize, caches_len: usize },
     MsgChannelFull,
@@ -54,6 +55,7 @@ impl std::error::Error for ReadError {}
 impl std::fmt::Display for ReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ReadError::EndOfFile => write!(f, "End of file"),
             ReadError::FatalError(e) => write!(f, "Fatal error: {:?}", e),
             ReadError::CacheIndexOutOfRange { index, caches_len } => {
                 write!(

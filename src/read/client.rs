@@ -105,13 +105,11 @@ impl ReadClient {
             });
         }
 
-        let mut do_cache = false;
-        if let Some(cache) = &caches[cache_index].cache {
-            if cache.wanted_start_frame != start_frame {
-                do_cache = true;
+        let mut do_cache = true;
+        if caches[cache_index].wanted_start_frame == start_frame {
+            if caches[cache_index].cache.is_some() {
+                do_cache = false;
             }
-        } else {
-            do_cache = true;
         }
 
         if do_cache {
@@ -249,11 +247,15 @@ impl ReadClient {
 
             if let Ok(msg) = self.from_server_rx.pop() {
                 match msg {
-                    ServerToClientMsg::ReadIntoBlockRes { block_index, block } => {
+                    ServerToClientMsg::ReadIntoBlockRes {
+                        block_index,
+                        block,
+                        wanted_start_frame,
+                    } => {
                         let prefetch_block = &mut heap.prefetch_buffer[block_index];
 
                         // Only use results from the latest request.
-                        if block.wanted_start_frame == prefetch_block.wanted_start_frame {
+                        if wanted_start_frame == prefetch_block.wanted_start_frame {
                             if let Some(prefetch_block) = prefetch_block.block.take() {
                                 // Tell the IO server to deallocate the old block.
                                 // This cannot fail because we made sure that a slot is available in
@@ -274,11 +276,15 @@ impl ReadClient {
                                 .push(ClientToServerMsg::DisposeBlock { block });
                         }
                     }
-                    ServerToClientMsg::CacheRes { cache_index, cache } => {
+                    ServerToClientMsg::CacheRes {
+                        cache_index,
+                        cache,
+                        wanted_start_frame,
+                    } => {
                         let cache_entry = &mut heap.caches[cache_index];
 
                         // Only use results from the latest request.
-                        if cache.wanted_start_frame == cache_entry.wanted_start_frame {
+                        if wanted_start_frame == cache_entry.wanted_start_frame {
                             if let Some(cache_entry) = cache_entry.cache.take() {
                                 // Tell the IO server to deallocate the old cache.
                                 // This cannot fail because we made sure that a slot is available in
@@ -313,7 +319,7 @@ impl ReadClient {
     }
 
     /// Read the next slice of data with length `length`.
-    pub fn read(&mut self, frames: usize) -> Result<ReadData, ReadError> {
+    pub fn read(&mut self, mut frames: usize) -> Result<ReadData, ReadError> {
         if self.error {
             return Err(ReadError::ServerClosed);
         }
@@ -327,6 +333,18 @@ impl ReadClient {
         // Check that there is at-least one slot open for when `advance_to_next_block()` is called.
         if self.to_server_tx.is_full() {
             return Err(ReadError::MsgChannelFull);
+        }
+
+        // Check if the end of the file was reached.
+        if self.current_frame() >= self.file_info.num_frames {
+            self.current_block_start_frame = 0;
+            self.current_frame_in_block = 0;
+            return Err(ReadError::EndOfFile);
+        }
+        let mut reached_end_of_file = false;
+        if self.current_frame() + frames >= self.file_info.num_frames {
+            frames = self.file_info.num_frames - self.current_frame();
+            reached_end_of_file = true;
         }
 
         let end_frame_in_block = self.current_frame_in_block + frames;
@@ -513,7 +531,11 @@ impl ReadClient {
             .ok_or_else(|| ReadError::UnknownFatalError)?;
 
         // This check should never fail because it can only be `None` in the destructor.
-        Ok(ReadData::new(&heap.read_buffer, frames))
+        Ok(ReadData::new(
+            &heap.read_buffer,
+            frames,
+            reached_end_of_file,
+        ))
     }
 
     fn advance_to_next_block(&mut self) -> Result<(), ReadError> {

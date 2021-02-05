@@ -18,10 +18,12 @@ pub(crate) enum ServerToClientMsg {
     ReadIntoBlockRes {
         block_index: usize,
         block: DataBlock,
+        wanted_start_frame: usize,
     },
     CacheRes {
         cache_index: usize,
         cache: DataBlockCache,
+        wanted_start_frame: usize,
     },
     FatalError(ReadError),
 }

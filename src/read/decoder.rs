@@ -12,7 +12,7 @@ use symphonia::core::probe::Hint;
 use symphonia::core::units::Duration;
 
 use super::{
-    error::{OpenError, ReadError},
+    error::{self, OpenError, ReadError},
     DataBlock,
 };
 use crate::BLOCK_SIZE;
@@ -184,6 +184,8 @@ impl Decoder {
     }
 
     pub fn decode_into(&mut self, data_block: &mut DataBlock) -> Result<(), ReadError> {
+        let mut reached_end_of_file = false;
+
         let mut block_start = 0;
         while block_start < BLOCK_SIZE {
             let num_frames_to_cpy = if self.reset_smp_buffer {
@@ -242,23 +244,41 @@ impl Decoder {
                 // Decode more packets.
 
                 loop {
-                    match self.decoder.decode(&self.reader.next_packet()?) {
-                        Ok(decoded) => {
-                            self.smp_buf.copy_interleaved_ref(decoded);
-                            self.curr_smp_buf_i = 0;
-                            break;
-                        }
-                        Err(Error::DecodeError(e)) => {
-                            // Decode errors are not fatal. Print a message and try to decode the next packet as
-                            // usual.
+                    match self.reader.next_packet() {
+                        Ok(packet) => {
+                            match self.decoder.decode(&packet) {
+                                Ok(decoded) => {
+                                    self.smp_buf.copy_interleaved_ref(decoded);
+                                    self.curr_smp_buf_i = 0;
+                                    break;
+                                }
+                                Err(Error::DecodeError(e)) => {
+                                    // Decode errors are not fatal. Print a message and try to decode the next packet as
+                                    // usual.
 
-                            // TODO: print warning.
+                                    // TODO: print warning.
 
-                            continue;
+                                    continue;
+                                }
+                                Err(e) => {
+                                    // Errors other than decode errors are fatal.
+                                    return Err(e.into());
+                                }
+                            }
                         }
                         Err(e) => {
-                            // Errors other than decode errors are fatal.
-                            return Err(e.into());
+                            if let Error::IoError(io_error) = &e {
+                                if io_error.kind() == std::io::ErrorKind::UnexpectedEof {
+                                    // End of file, stop decoding.
+                                    reached_end_of_file = true;
+                                    block_start = BLOCK_SIZE;
+                                    break;
+                                } else {
+                                    return Err(e.into());
+                                }
+                            } else {
+                                return Err(e.into());
+                            }
                         }
                     }
                 }
@@ -267,7 +287,11 @@ impl Decoder {
 
         data_block.start_frame = self.current_frame;
 
-        self.current_frame = wrap_frame(self.current_frame + BLOCK_SIZE, self.num_frames);
+        if reached_end_of_file {
+            self.current_frame = self.num_frames;
+        } else {
+            self.current_frame = wrap_frame(self.current_frame + BLOCK_SIZE, self.num_frames);
+        }
 
         Ok(())
     }

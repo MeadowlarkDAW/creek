@@ -2,7 +2,6 @@ use crate::{BLOCK_SIZE, NUM_PREFETCH_BLOCKS};
 
 pub struct DataBlock {
     pub block: Vec<[f32; BLOCK_SIZE]>,
-    pub start_frame: usize,
 }
 
 impl DataBlock {
@@ -15,10 +14,7 @@ impl DataBlock {
             block.push(data);
         }
 
-        DataBlock {
-            block,
-            start_frame: 0,
-        }
+        DataBlock { block }
     }
 }
 

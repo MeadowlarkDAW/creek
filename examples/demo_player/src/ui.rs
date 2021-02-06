@@ -23,7 +23,7 @@ impl DemoPlayerApp {
         from_player_rx: Consumer<ProcessToGuiMsg>,
     ) -> Self {
         let mut test_client =
-            AudioDiskStream::open_read("./test_files/wav_i24_stereo.wav", 0, 2, true).unwrap();
+            AudioDiskStream::open_read("./test_files/wav_i24_mono.wav", 0, 2, true).unwrap();
 
         test_client.seek_to(0, 0).unwrap();
         test_client.block_until_ready().unwrap();
@@ -37,7 +37,7 @@ impl DemoPlayerApp {
         to_player_tx
             .push(GuiToProcessMsg::SetLoop {
                 start: 0,
-                end: num_frames,
+                end: num_frames - 500000,
             })
             .unwrap();
 

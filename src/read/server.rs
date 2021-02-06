@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::SERVER_WAIT_TIME;
+use crate::{BLOCK_SIZE, SERVER_WAIT_TIME};
 
 use super::error::OpenError;
 use super::{
@@ -94,8 +94,6 @@ impl ReadServer {
                                 DataBlock::new(self.num_channels),
                             ),
                         );
-
-                        block.start_frame = start_frame;
 
                         match self.decoder.decode_into(&mut block) {
                             Ok(()) => {

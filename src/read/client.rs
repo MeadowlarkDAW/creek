@@ -148,6 +148,8 @@ impl ReadClient {
 
         self.current_block_start_frame = start_frame;
         self.current_frame_in_block = 0;
+        self.current_block_index = 0;
+        self.next_block_index = 1;
 
         // Request the server to start fetching blocks ahead of the cache.
         // This cannot fail because we made sure that a slot is available in
@@ -163,12 +165,8 @@ impl ReadClient {
             .ok_or_else(|| ReadError::UnknownFatalError)?;
 
         // Tell each prefetch block to use the cache.
-        let mut wanted_start_frame = start_frame;
         for block in heap.prefetch_buffer.iter_mut() {
             block.use_cache = Some(cache_index);
-            block.wanted_start_frame = wanted_start_frame;
-
-            wanted_start_frame += BLOCK_SIZE;
         }
 
         Ok(cache_exists)
@@ -362,25 +360,22 @@ impl ReadClient {
                     .ok_or_else(|| ReadError::UnknownFatalError)?;
 
                 // Get the first block of data.
-                let (current_block_data, current_block_start_frame) = {
+                let current_block_data = {
                     let current_block = &heap.prefetch_buffer[self.current_block_index];
 
                     if let Some(cache_index) = current_block.use_cache {
-                        // This check should never fail because it can only be `None` in the destructor.
                         if let Some(cache) = &heap.caches[cache_index].cache {
-                            let start_frame = cache.blocks[self.current_block_index].start_frame;
-                            (Some(&cache.blocks[self.current_block_index]), start_frame)
+                            Some(&cache.blocks[self.current_block_index])
                         } else {
                             // If cache is empty, output silence instead.
-                            (None, self.current_block_start_frame)
+                            None
                         }
                     } else {
                         if let Some(block) = &current_block.block {
-                            let start_frame = block.start_frame;
-                            (Some(block), start_frame)
+                            Some(block)
                         } else {
                             // TODO: warn of buffer underflow.
-                            (None, self.current_block_start_frame)
+                            None
                         }
                     }
                 };
@@ -400,7 +395,7 @@ impl ReadClient {
                 }
 
                 // Keep this from growing indefinitely.
-                self.current_block_start_frame = current_block_start_frame;
+                //self.current_block_start_frame = current_block_start_frame;
             }
 
             self.advance_to_next_block()?;
@@ -414,24 +409,22 @@ impl ReadClient {
                     .ok_or_else(|| ReadError::UnknownFatalError)?;
 
                 // Get the next block of data.
-                let (next_block_data, next_block_start_frame) = {
+                let next_block_data = {
                     let next_block = &heap.prefetch_buffer[self.current_block_index];
 
                     if let Some(cache_index) = next_block.use_cache {
                         if let Some(cache) = &heap.caches[cache_index].cache {
-                            let start_frame = cache.blocks[self.current_block_index].start_frame;
-                            (Some(&cache.blocks[self.current_block_index]), start_frame)
+                            Some(&cache.blocks[self.current_block_index])
                         } else {
                             // If cache is empty, output silence instead.
-                            (None, self.current_block_start_frame)
+                            None
                         }
                     } else {
                         if let Some(block) = &next_block.block {
-                            let start_frame = block.start_frame;
-                            (Some(block), start_frame)
+                            Some(block)
                         } else {
                             // TODO: warn of buffer underflow.
-                            (None, self.current_block_start_frame)
+                            None
                         }
                     }
                 };
@@ -450,8 +443,6 @@ impl ReadClient {
                     read_buffer_part.copy_from_slice(from_buffer_part);
                 }
 
-                // Advance.
-                self.current_block_start_frame = next_block_start_frame;
                 self.current_frame_in_block = second_len;
             }
         } else {
@@ -464,24 +455,22 @@ impl ReadClient {
                     .ok_or_else(|| ReadError::UnknownFatalError)?;
 
                 // Get the first block of data.
-                let (current_block_data, current_block_start_frame) = {
+                let current_block_data = {
                     let current_block = &heap.prefetch_buffer[self.current_block_index];
 
                     if let Some(cache_index) = current_block.use_cache {
                         if let Some(cache) = &heap.caches[cache_index].cache {
-                            let start_frame = cache.blocks[self.current_block_index].start_frame;
-                            (Some(&cache.blocks[self.current_block_index]), start_frame)
+                            Some(&cache.blocks[self.current_block_index])
                         } else {
                             // If cache is empty, output silence instead.
-                            (None, self.current_block_start_frame)
+                            None
                         }
                     } else {
                         if let Some(block) = &current_block.block {
-                            let start_frame = block.start_frame;
-                            (Some(block), start_frame)
+                            Some(block)
                         } else {
                             // TODO: warn of buffer underflow.
-                            (None, self.current_block_start_frame)
+                            None
                         }
                     }
                 };
@@ -499,27 +488,11 @@ impl ReadClient {
 
                     read_buffer_part.copy_from_slice(from_buffer_part);
                 }
-
-                // Keep this from growing indefinitely.
-                self.current_block_start_frame = current_block_start_frame;
             }
 
-            // Advance.
             self.current_frame_in_block = end_frame_in_block;
             if self.current_frame_in_block == BLOCK_SIZE {
                 self.advance_to_next_block()?;
-
-                // This check should never fail because it can only be `None` in the destructor.
-                let heap = self
-                    .heap_data
-                    .as_mut()
-                    .ok_or_else(|| ReadError::UnknownFatalError)?;
-
-                // Keep this from growing indefinitely.
-                if let Some(next_block) = &heap.prefetch_buffer[self.current_block_index].block {
-                    self.current_block_start_frame = next_block.start_frame
-                };
-
                 self.current_frame_in_block = 0;
             }
         }

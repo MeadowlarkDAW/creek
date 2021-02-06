@@ -1,6 +1,5 @@
-use core::num;
+use std::fs::File;
 use std::path::PathBuf;
-use std::{fs::File, ptr::null_mut};
 
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{CodecParameters, Decoder as SymphDecoder, DecoderOptions};
@@ -12,7 +11,7 @@ use symphonia::core::probe::Hint;
 use symphonia::core::units::Duration;
 
 use super::{
-    error::{self, OpenError, ReadError},
+    error::{OpenError, ReadError},
     DataBlock,
 };
 use crate::BLOCK_SIZE;
@@ -37,8 +36,6 @@ pub struct Decoder {
     num_channels: usize,
     sample_rate: Option<u32>,
 
-    decoder_opts: DecoderOptions,
-
     current_frame: usize,
     reset_smp_buffer: bool,
 }
@@ -46,7 +43,7 @@ pub struct Decoder {
 impl Decoder {
     pub fn new(
         file: PathBuf,
-        mut start_frame: usize,
+        start_frame: usize,
         verify: bool,
     ) -> Result<(Self, FileInfo), OpenError> {
         // Create a hint to help the format registry guess what format reader is appropriate.
@@ -93,8 +90,6 @@ impl Decoder {
 
         // Seek the reader to the requested position.
         if start_frame != 0 {
-            start_frame = wrap_frame(start_frame, num_frames);
-
             let seconds = start_frame as f64 / f64::from(sample_rate.unwrap_or(44100));
 
             reader.seek(SeekTo::Time {
@@ -123,6 +118,8 @@ impl Decoder {
                 }
                 Err(Error::DecodeError(e)) => {
                     // Decode errors are not fatal. Send a warning and try to decode the next packet.
+
+                    println!("{}", e);
 
                     // TODO: print warning.
 
@@ -154,8 +151,6 @@ impl Decoder {
                 num_channels,
                 sample_rate,
 
-                decoder_opts,
-
                 current_frame: start_frame,
                 reset_smp_buffer: false,
             },
@@ -164,7 +159,7 @@ impl Decoder {
     }
 
     pub fn seek_to(&mut self, frame: usize) -> Result<(), ReadError> {
-        self.current_frame = wrap_frame(frame, self.num_frames);
+        self.current_frame = frame;
 
         let seconds = self.current_frame as f64 / f64::from(self.sample_rate.unwrap_or(44100));
 
@@ -173,12 +168,16 @@ impl Decoder {
         })?;
 
         self.reset_smp_buffer = true;
+        self.curr_smp_buf_i = 0;
 
-        /*
-        self.decoder.close();
-        self.decoder = symphonia::default::get_codecs()
-            .make(self.decoder.codec_params(), &self.decoder_opts)?;
-            */
+        //let decoder_opts = DecoderOptions {
+        //verify: self.verify,
+        //..Default::default()
+        //};
+
+        //self.decoder.close();
+        //self.decoder = symphonia::default::get_codecs()
+        //.make(self.decoder.codec_params(), &decoder_opts)?;
 
         Ok(())
     }
@@ -256,6 +255,8 @@ impl Decoder {
                                     // Decode errors are not fatal. Print a message and try to decode the next packet as
                                     // usual.
 
+                                    println!("{}", e);
+
                                     // TODO: print warning.
 
                                     continue;
@@ -285,12 +286,10 @@ impl Decoder {
             }
         }
 
-        data_block.start_frame = self.current_frame;
-
         if reached_end_of_file {
             self.current_frame = self.num_frames;
         } else {
-            self.current_frame = wrap_frame(self.current_frame + BLOCK_SIZE, self.num_frames);
+            self.current_frame += BLOCK_SIZE;
         }
 
         Ok(())
@@ -305,13 +304,6 @@ impl Drop for Decoder {
     fn drop(&mut self) {
         self.decoder.close();
     }
-}
-
-fn wrap_frame(mut frame: usize, len: usize) -> usize {
-    while frame >= len {
-        frame -= len;
-    }
-    frame
 }
 
 #[cfg(test)]

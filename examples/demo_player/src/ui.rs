@@ -37,7 +37,7 @@ impl DemoPlayerApp {
         to_player_tx
             .push(GuiToProcessMsg::SetLoop {
                 start: 0,
-                end: num_frames - 500000,
+                end: num_frames,
             })
             .unwrap();
 

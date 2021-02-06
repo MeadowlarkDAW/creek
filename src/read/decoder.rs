@@ -59,7 +59,7 @@ impl Decoder {
         let source = Box::new(File::open(file)?);
 
         // Create the media source stream using the boxed media source from above.
-        let mss = MediaSourceStream::new(source);
+        let mss = MediaSourceStream::new(source, Default::default());
 
         // Use the default options for metadata and format readers.
         let format_opts: FormatOptions = Default::default();

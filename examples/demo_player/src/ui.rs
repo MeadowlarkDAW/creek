@@ -29,10 +29,16 @@ impl DemoPlayerApp {
         mut to_player_tx: Producer<GuiToProcessMsg>,
         from_player_rx: Consumer<ProcessToGuiMsg>,
     ) -> Self {
-        let mut test_client =
-            AudioDiskStream::open_read("./test_files/wav_i24_stereo.wav", 0, 3, false).unwrap();
+        let opts = rt_audio_disk_stream::StreamOptions {
+            num_caches: 2,
+            ..Default::default()
+        };
 
-        test_client.seek_to(0, 0).unwrap();
+        let mut test_client =
+            AudioDiskStream::open_read("./test_files/wav_i24_stereo.wav", 0, opts).unwrap();
+
+        // Cache the start of the file and store it in cache number 0.
+        test_client.seek_to(0, Some(0)).unwrap();
         test_client.block_until_ready().unwrap();
 
         let num_frames = test_client.info().num_frames;

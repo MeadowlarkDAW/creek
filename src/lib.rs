@@ -9,12 +9,30 @@ pub use read::{Decoder, FileInfo, OpenError, ReadClient, ReadError};
 
 use read::{ClientToServerMsg, HeapData, ReadServer, ServerToClientMsg};
 
+pub static DEFAULT_NUM_PREFETCH_BLOCKS: usize = 20;
+pub static DEFAULT_NUM_CACHES: usize = 1;
+
 pub const BLOCK_SIZE: usize = 8192;
-pub const NUM_PREFETCH_BLOCKS: usize = 20;
-pub const MSG_CHANNEL_SIZE: usize = 128;
-pub const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);
+const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);
 
 static SILENCE_BUFFER: [f32; BLOCK_SIZE] = [0.0; BLOCK_SIZE];
+
+#[derive(Debug, Clone, Copy)]
+pub struct StreamOptions {
+    pub num_prefetch_blocks: usize,
+    pub num_caches: usize,
+    pub decode_verify: bool,
+}
+
+impl Default for StreamOptions {
+    fn default() -> Self {
+        StreamOptions {
+            num_prefetch_blocks: DEFAULT_NUM_PREFETCH_BLOCKS,
+            num_caches: DEFAULT_NUM_CACHES,
+            decode_verify: false,
+        }
+    }
+}
 
 pub struct AudioDiskStream {}
 
@@ -22,13 +40,15 @@ impl AudioDiskStream {
     pub fn open_read<P: Into<PathBuf>>(
         file: P,
         start_frame: usize,
-        max_num_caches: usize,
-        decode_verify: bool,
+        options: StreamOptions,
     ) -> Result<ReadClient, OpenError> {
+        // Reserve plenty of space for the message channels.
+        let msg_channel_size = options.num_prefetch_blocks * 8;
+
         let (to_server_tx, from_client_rx) =
-            RingBuffer::<ClientToServerMsg>::new(MSG_CHANNEL_SIZE).split();
+            RingBuffer::<ClientToServerMsg>::new(msg_channel_size).split();
         let (to_client_tx, from_server_rx) =
-            RingBuffer::<ServerToClientMsg>::new(MSG_CHANNEL_SIZE).split();
+            RingBuffer::<ServerToClientMsg>::new(msg_channel_size).split();
 
         // Create dedicated close signal.
         let (close_tx, close_rx) = RingBuffer::<Option<HeapData>>::new(1).split();
@@ -37,8 +57,9 @@ impl AudioDiskStream {
 
         match ReadServer::new(
             file,
-            decode_verify,
+            options.decode_verify,
             start_frame,
+            options.num_prefetch_blocks,
             to_client_tx,
             from_client_rx,
             close_rx,
@@ -49,7 +70,8 @@ impl AudioDiskStream {
                     from_server_rx,
                     close_tx,
                     start_frame,
-                    max_num_caches,
+                    options.num_prefetch_blocks,
+                    options.num_caches,
                     file_info,
                 );
 

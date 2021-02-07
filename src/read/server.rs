@@ -20,6 +20,7 @@ pub(crate) struct ReadServer {
     cache_pool: Vec<DataBlockCache>,
 
     num_channels: usize,
+    num_prefetch_blocks: usize,
 
     run: bool,
 }
@@ -29,6 +30,7 @@ impl ReadServer {
         file: PathBuf,
         verify: bool,
         start_frame: usize,
+        num_prefetch_blocks: usize,
         to_client_tx: Producer<ServerToClientMsg>,
         from_client_rx: Consumer<ClientToServerMsg>,
         close_signal_rx: Consumer<Option<HeapData>>,
@@ -51,6 +53,7 @@ impl ReadServer {
                         block_pool: Vec::new(),
                         cache_pool: Vec::new(),
                         num_channels,
+                        num_prefetch_blocks,
                         run: true,
                     });
                 }
@@ -143,7 +146,7 @@ impl ReadServer {
                     // Try using one in the pool if it exists.
                     self.cache_pool.pop().unwrap_or(
                         // No caches in pool. Create a new one.
-                        DataBlockCache::new(self.num_channels),
+                        DataBlockCache::new(self.num_channels, self.num_prefetch_blocks),
                     ),
                 );
 

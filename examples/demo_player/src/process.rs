@@ -120,8 +120,8 @@ impl Process {
                             self.transport_pos = pos;
 
                             if let Some(read_client) = &mut self.read_client {
-                                // cache-index 2 == temporary cache
-                                if let Err(e) = read_client.seek_to(2, pos) {
+                                // cache-index 2 == temporary seek cache
+                                if let Err(e) = read_client.seek_to(pos, None) {
                                     println!("{:?}", e);
                                     self.fatal_error = true;
                                     return;
@@ -209,7 +209,7 @@ impl Process {
                                     1
                                 };
 
-                                read_client.seek_to(cache_index, self.loop_start)
+                                read_client.seek_to(self.loop_start, Some(cache_index))
                             } {
                                 println!("{:?}", e);
                                 self.fatal_error = true;
@@ -276,7 +276,7 @@ impl Process {
         };
 
         if let Some(read_client) = &mut self.read_client {
-            return read_client.seek_to(cache_index, self.loop_start);
+            return read_client.seek_to(self.loop_start, Some(cache_index));
         }
 
         Ok(false)

@@ -1,4 +1,4 @@
-use crate::{BLOCK_SIZE, NUM_PREFETCH_BLOCKS};
+use crate::BLOCK_SIZE;
 
 pub struct DataBlock {
     pub block: Vec<[f32; BLOCK_SIZE]>,
@@ -23,9 +23,9 @@ pub(crate) struct DataBlockCache {
 }
 
 impl DataBlockCache {
-    pub(crate) fn new(num_channels: usize) -> Self {
-        let mut blocks: Vec<DataBlock> = Vec::with_capacity(NUM_PREFETCH_BLOCKS);
-        for _ in 0..NUM_PREFETCH_BLOCKS {
+    pub(crate) fn new(num_channels: usize, num_prefetch_blocks: usize) -> Self {
+        let mut blocks: Vec<DataBlock> = Vec::with_capacity(num_prefetch_blocks);
+        for _ in 0..num_prefetch_blocks {
             blocks.push(DataBlock::new(num_channels));
         }
 

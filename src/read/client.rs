@@ -1,6 +1,6 @@
 use rtrb::{Consumer, Producer};
 
-use crate::{BLOCK_SIZE, NUM_PREFETCH_BLOCKS, SERVER_WAIT_TIME, SILENCE_BUFFER};
+use crate::{BLOCK_SIZE, SERVER_WAIT_TIME, SILENCE_BUFFER};
 
 use super::{
     ClientToServerMsg, DataBlock, DataBlockCacheEntry, DataBlockEntry, FileInfo, HeapData,
@@ -19,6 +19,12 @@ pub struct ReadClient {
     current_block_start_frame: usize,
     current_frame_in_block: usize,
 
+    temp_cache_index: usize,
+    temp_seek_cache_index: usize,
+    is_temp_cache: bool,
+
+    num_prefetch_blocks: usize,
+
     file_info: FileInfo,
     error: bool,
 }
@@ -29,13 +35,14 @@ impl ReadClient {
         from_server_rx: Consumer<ServerToClientMsg>,
         close_signal_tx: Producer<Option<HeapData>>,
         start_frame: usize,
+        num_prefetch_blocks: usize,
         max_num_caches: usize,
         file_info: FileInfo,
     ) -> Self {
         let read_buffer = DataBlock::new(file_info.num_channels);
 
-        // Reserve the first cache as a temporary cache.
-        let max_num_caches = max_num_caches + 1;
+        // Reserve the last two caches as temporary caches.
+        let max_num_caches = max_num_caches + 2;
 
         let mut caches: Vec<DataBlockCacheEntry> = Vec::with_capacity(max_num_caches);
         for _ in 0..max_num_caches {
@@ -45,9 +52,12 @@ impl ReadClient {
             });
         }
 
-        let mut prefetch_buffer: Vec<DataBlockEntry> = Vec::with_capacity(NUM_PREFETCH_BLOCKS);
+        let temp_cache_index = max_num_caches - 2;
+        let temp_seek_cache_index = max_num_caches - 1;
+
+        let mut prefetch_buffer: Vec<DataBlockEntry> = Vec::with_capacity(num_prefetch_blocks);
         let mut wanted_start_frame = start_frame;
-        for _ in 0..NUM_PREFETCH_BLOCKS {
+        for _ in 0..num_prefetch_blocks {
             prefetch_buffer.push(DataBlockEntry {
                 use_cache: None,
                 block: None,
@@ -75,23 +85,27 @@ impl ReadClient {
             current_block_start_frame: start_frame,
             current_frame_in_block: 0,
 
+            temp_cache_index,
+            temp_seek_cache_index,
+            is_temp_cache: false,
+
+            num_prefetch_blocks,
+
             file_info,
             error: false,
         }
     }
 
-    pub fn max_num_caches(&self) -> usize {
+    pub fn num_caches(&self) -> usize {
         // This check should never fail because it can only be `None` in the destructor.
         if let Some(heap) = &self.heap_data {
-            heap.caches.len() - 1
+            heap.caches.len() - 2
         } else {
             0
         }
     }
 
     pub fn cache(&mut self, cache_index: usize, start_frame: usize) -> Result<bool, ReadError> {
-        let cache_index = cache_index + 1;
-
         if self.error {
             return Err(ReadError::ServerClosed);
         }
@@ -102,10 +116,12 @@ impl ReadClient {
             .as_mut()
             .ok_or_else(|| ReadError::UnknownFatalError)?;
 
-        if cache_index >= heap.caches.len() {
+        if self.is_temp_cache {
+            self.is_temp_cache = false;
+        } else if cache_index >= heap.caches.len() - 2 {
             return Err(ReadError::CacheIndexOutOfRange {
-                index: cache_index - 1,
-                caches_len: heap.caches.len(),
+                index: cache_index,
+                caches_len: heap.caches.len() - 2,
             });
         }
 
@@ -131,14 +147,13 @@ impl ReadClient {
             for block in heap.prefetch_buffer.iter_mut() {
                 if let Some(index) = block.use_cache {
                     if index == cache_index {
-                        // cache_index 0 == temporary cache
-                        block.use_cache = Some(0);
+                        block.use_cache = Some(self.temp_cache_index);
                         using_cache = true;
                     }
                 }
             }
             if using_cache {
-                if let Some(cache) = heap.caches[0].cache.take() {
+                if let Some(cache) = heap.caches[self.temp_cache_index].cache.take() {
                     // Tell the server to deallocate the old temporary cache.
                     // This cannot fail because we made sure that a slot is available in
                     // the previous step.
@@ -147,7 +162,7 @@ impl ReadClient {
                         .push(ClientToServerMsg::DisposeCache { cache });
                 }
 
-                heap.caches[0].cache = cache.take();
+                heap.caches[self.temp_cache_index].cache = cache.take();
             }
 
             // This cannot fail because we made sure that a slot is available in
@@ -164,9 +179,11 @@ impl ReadClient {
         Ok(true)
     }
 
-    pub fn seek_to(&mut self, cache_index: usize, start_frame: usize) -> Result<bool, ReadError> {
-        let cache_index = cache_index + 1;
-
+    pub fn seek_to(
+        &mut self,
+        start_frame: usize,
+        cache_index: Option<usize>,
+    ) -> Result<bool, ReadError> {
         if self.error {
             return Err(ReadError::ServerClosed);
         }
@@ -176,7 +193,14 @@ impl ReadClient {
             return Err(ReadError::MsgChannelFull);
         }
 
-        let cache_exists = self.cache(cache_index - 1, start_frame)?;
+        let cache_index = if let Some(cache_index) = cache_index {
+            cache_index
+        } else {
+            self.is_temp_cache = true;
+            self.temp_seek_cache_index
+        };
+
+        let cache_exists = self.cache(cache_index, start_frame)?;
 
         self.current_block_start_frame = start_frame;
         self.current_frame_in_block = 0;
@@ -187,7 +211,7 @@ impl ReadClient {
         // This cannot fail because we made sure that a slot is available in
         // the previous step.
         let _ = self.to_server_tx.push(ClientToServerMsg::SeekTo {
-            frame: self.current_block_start_frame + (NUM_PREFETCH_BLOCKS * BLOCK_SIZE),
+            frame: self.current_block_start_frame + (self.num_prefetch_blocks * BLOCK_SIZE),
         });
 
         // This check should never fail because it can only be `None` in the destructor.
@@ -555,7 +579,7 @@ impl ReadClient {
         // Request a new block of data that is one block ahead of the
         // latest block in the prefetch buffer.
         let wanted_start_frame =
-            self.current_block_start_frame + (NUM_PREFETCH_BLOCKS * BLOCK_SIZE);
+            self.current_block_start_frame + (self.num_prefetch_blocks * BLOCK_SIZE);
 
         entry.use_cache = None;
         entry.wanted_start_frame = wanted_start_frame;
@@ -570,12 +594,12 @@ impl ReadClient {
         });
 
         self.current_block_index += 1;
-        if self.current_block_index >= NUM_PREFETCH_BLOCKS {
+        if self.current_block_index >= self.num_prefetch_blocks {
             self.current_block_index = 0;
         }
 
         self.next_block_index += 1;
-        if self.next_block_index >= NUM_PREFETCH_BLOCKS {
+        if self.next_block_index >= self.num_prefetch_blocks {
             self.next_block_index = 0;
         }
 

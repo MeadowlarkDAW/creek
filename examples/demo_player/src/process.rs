@@ -164,13 +164,21 @@ impl Process {
 
                 match read_client.read(read_frames) {
                     Ok(read_data) => {
+                        // If user seeks ahead of the loop end, continue playing until the end
+                        // of the file.
+                        let loop_end = if self.transport_pos < self.loop_end {
+                            self.loop_end
+                        } else {
+                            self.transport_len
+                        };
+
                         // Advance the playing position.
                         self.transport_pos += read_data.num_frames();
-                        if self.transport_pos >= self.loop_end {
+                        if self.transport_pos >= loop_end {
                             // Copy up to the end of the loop.
 
                             let to_end_of_loop =
-                                read_data.num_frames() - (self.transport_pos - self.loop_end);
+                                read_data.num_frames() - (self.transport_pos - loop_end);
 
                             if read_data.num_channels() == 1 {
                                 let ch = read_data.read_channel(0);

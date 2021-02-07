@@ -4,6 +4,8 @@ use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
 
+static BUFFERING_FADEOUT_FRAMES: usize = 25;
+
 pub struct DemoPlayerApp {
     playing: bool,
     current_frame: usize,
@@ -15,6 +17,8 @@ pub struct DemoPlayerApp {
 
     frame_close_tx: Producer<()>,
     frame_close_rx: Option<Consumer<()>>,
+
+    buffering_anim: usize,
 }
 
 impl DemoPlayerApp {
@@ -23,7 +27,7 @@ impl DemoPlayerApp {
         from_player_rx: Consumer<ProcessToGuiMsg>,
     ) -> Self {
         let mut test_client =
-            AudioDiskStream::open_read("./test_files/wav_i24_mono.wav", 0, 2, true).unwrap();
+            AudioDiskStream::open_read("./test_files/wav_i24_mono.wav", 0, 3, true).unwrap();
 
         test_client.seek_to(0, 0).unwrap();
         test_client.block_until_ready().unwrap();
@@ -54,6 +58,8 @@ impl DemoPlayerApp {
 
             to_player_tx,
             from_player_rx,
+
+            buffering_anim: 0,
         }
     }
 }
@@ -88,28 +94,62 @@ impl epi::App for DemoPlayerApp {
                 ProcessToGuiMsg::TransportPos(pos) => {
                     self.current_frame = pos;
                 }
+                ProcessToGuiMsg::Buffering => {
+                    self.buffering_anim = BUFFERING_FADEOUT_FRAMES;
+                }
             }
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
 
-            let play_label = if self.playing { "||" } else { ">" };
+            ui.horizontal(|ui| {
+                let play_label = if self.playing { "Pause" } else { "Play" };
+                if ui.button(play_label).clicked {
+                    if self.playing {
+                        self.playing = false;
 
-            if ui.button(play_label).clicked {
-                if self.playing {
-                    self.playing = false;
+                        let _ = self.to_player_tx.push(GuiToProcessMsg::Pause);
+                    } else {
+                        self.playing = true;
 
-                    self.to_player_tx.push(GuiToProcessMsg::Pause).unwrap();
-                } else {
-                    self.playing = true;
-
-                    self.to_player_tx.push(GuiToProcessMsg::PlayResume).unwrap();
+                        let _ = self.to_player_tx.push(GuiToProcessMsg::PlayResume);
+                    }
                 }
+
+                if ui.button("Stop").clicked {
+                    self.playing = false;
+                    let _ = self.to_player_tx.push(GuiToProcessMsg::Stop);
+                }
+
+                if ui.button("Restart").clicked {
+                    self.playing = true;
+                    let _ = self.to_player_tx.push(GuiToProcessMsg::Restart);
+                }
+            });
+
+            if self.buffering_anim > 0 {
+                ui.label(
+                    egui::Label::new("Status: Buffered")
+                        .text_color(egui::Color32::from_rgb(255, 0, 0)),
+                );
+                self.buffering_anim -= 1;
+            } else {
+                ui.label(
+                    egui::Label::new("Status: Ready")
+                        .text_color(egui::Color32::from_rgb(0, 255, 0)),
+                );
             }
 
-            self.transport_control
-                .ui(ui, &mut self.current_frame, self.num_frames);
+            let (_, user_seeked) =
+                self.transport_control
+                    .ui(ui, &mut self.current_frame, self.num_frames);
+
+            if user_seeked {
+                let _ = self
+                    .to_player_tx
+                    .push(GuiToProcessMsg::SeekTo(self.current_frame));
+            }
         });
     }
 }
@@ -123,6 +163,8 @@ impl Drop for DemoPlayerApp {
 struct TransportControl {
     rail_stroke: egui::Stroke,
     handle_stroke: egui::Stroke,
+
+    seeking: bool,
 }
 
 impl Default for TransportControl {
@@ -130,6 +172,7 @@ impl Default for TransportControl {
         Self {
             rail_stroke: egui::Stroke::new(1.0, egui::Color32::GRAY),
             handle_stroke: egui::Stroke::new(1.0, egui::Color32::WHITE),
+            seeking: false,
         }
     }
 }
@@ -137,7 +180,12 @@ impl Default for TransportControl {
 impl TransportControl {
     const PADDING: f32 = 20.0;
 
-    pub fn ui(&mut self, ui: &mut egui::Ui, value: &mut usize, max_value: usize) -> egui::Response {
+    pub fn ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        value: &mut usize,
+        max_value: usize,
+    ) -> (egui::Response, bool) {
         let (response, painter) =
             ui.allocate_painter(ui.available_size_before_wrap_finite(), egui::Sense::drag());
         let rect = response.rect;
@@ -169,8 +217,17 @@ impl TransportControl {
                     *value = (((handle_x / rail_width) * max_value as f32).round() as isize)
                         .max(0)
                         .min(max_value as isize) as usize;
+
+                    self.seeking = true;
                 }
             }
+        }
+
+        let mut changed: bool = false;
+        if ui.input().mouse.released && self.seeking {
+            self.seeking = false;
+
+            changed = true;
         }
 
         let handle_x = start_x + ((*value as f32 / max_value as f32) * rail_width);
@@ -186,6 +243,6 @@ impl TransportControl {
 
         painter.extend(shapes);
 
-        response
+        (response, changed)
     }
 }

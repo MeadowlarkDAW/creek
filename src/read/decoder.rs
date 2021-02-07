@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::path::PathBuf;
 
-use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{CodecParameters, Decoder as SymphDecoder, DecoderOptions};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekTo};
@@ -9,9 +8,10 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::core::units::Duration;
+use symphonia::core::{audio::SampleBuffer, errors::SeekErrorKind};
 
 use super::{
-    error::{OpenError, ReadError},
+    error::{self, OpenError, ReadError},
     DataBlock,
 };
 use crate::BLOCK_SIZE;
@@ -159,13 +159,25 @@ impl Decoder {
     }
 
     pub fn seek_to(&mut self, frame: usize) -> Result<(), ReadError> {
+        if frame >= self.num_frames {
+            // Do nothing if out of range.
+            self.current_frame = self.num_frames;
+
+            return Ok(());
+        }
+
         self.current_frame = frame;
 
         let seconds = self.current_frame as f64 / f64::from(self.sample_rate.unwrap_or(44100));
 
-        self.reader.seek(SeekTo::Time {
+        match self.reader.seek(SeekTo::Time {
             time: seconds.into(),
-        })?;
+        }) {
+            Ok(res) => {}
+            Err(e) => {
+                return Err(e.into());
+            }
+        }
 
         self.reset_smp_buffer = true;
         self.curr_smp_buf_i = 0;
@@ -183,6 +195,11 @@ impl Decoder {
     }
 
     pub fn decode_into(&mut self, data_block: &mut DataBlock) -> Result<(), ReadError> {
+        if self.current_frame >= self.num_frames {
+            // Do nothing if reached the end of the file.
+            return Ok(());
+        }
+
         let mut reached_end_of_file = false;
 
         let mut block_start = 0;

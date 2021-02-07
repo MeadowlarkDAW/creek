@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::{BLOCK_SIZE, SERVER_WAIT_TIME};
+use crate::SERVER_WAIT_TIME;
 
 use super::error::OpenError;
 use super::{

@@ -17,6 +17,7 @@ pub enum GuiToProcessMsg {
 
 pub enum ProcessToGuiMsg {
     TransportPos(usize),
+    Buffering,
 }
 
 fn main() {

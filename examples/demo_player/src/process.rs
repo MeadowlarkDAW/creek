@@ -95,6 +95,10 @@ impl Process {
                         self.fatal_error = true;
                         return;
                     }
+
+                    let _ = self
+                        .to_gui_tx
+                        .push(ProcessToGuiMsg::TransportPos(self.transport_pos));
                 }
                 GuiToProcessMsg::Restart => {
                     self.transport_state = TransportState::Playing;
@@ -130,20 +134,6 @@ impl Process {
             }
         }
 
-        // Update client and check if it is ready.
-        let is_ready = if let Some(read_client) = &mut self.read_client {
-            match read_client.is_ready() {
-                Ok(ready) => ready,
-                Err(e) => {
-                    println!("{:?}", e);
-                    self.fatal_error = true;
-                    return;
-                }
-            }
-        } else {
-            false
-        };
-
         if let Some(read_client) = &mut self.read_client {
             if let TransportState::Paused = self.transport_state {
                 // Do nothing
@@ -151,11 +141,23 @@ impl Process {
                 return;
             }
 
-            if !is_ready {
-                println!("buffering");
-                // TODO: Warn UI of buffering.
-                silence(data);
-                return;
+            // Update client and check if it is ready.
+            match read_client.is_ready() {
+                Ok(ready) => {
+                    if !ready {
+                        // Warn UI of buffering.
+
+                        let _ = self.to_gui_tx.push(ProcessToGuiMsg::Buffering);
+
+                        // We can choose to either continue reading (which will return silence),
+                        // or pause playback until the buffer is filled.
+                    }
+                }
+                Err(e) => {
+                    println!("{:?}", e);
+                    self.fatal_error = true;
+                    return;
+                }
             }
 
             while data.len() > 1 {

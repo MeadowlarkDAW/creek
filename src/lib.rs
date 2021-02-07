@@ -42,8 +42,8 @@ impl AudioDiskStream {
         start_frame: usize,
         options: StreamOptions,
     ) -> Result<ReadClient, OpenError> {
-        // Reserve plenty of space for the message channels.
-        let msg_channel_size = options.num_prefetch_blocks * 8;
+        // Reserve ample space for the message channels.
+        let msg_channel_size = (options.num_prefetch_blocks * 4) + (options.num_caches * 4) + 8;
 
         let (to_server_tx, from_client_rx) =
             RingBuffer::<ClientToServerMsg>::new(msg_channel_size).split();

@@ -71,6 +71,8 @@ impl ReadServer {
     }
 
     fn run(mut self) {
+        let mut cache_requests: Vec<(usize, Option<DataBlockCache>, usize)> = Vec::new();
+
         while self.run {
             // Check for close signal.
             if let Ok(heap_data) = self.close_signal_rx.pop() {
@@ -126,50 +128,55 @@ impl ReadServer {
                         cache,
                         start_frame,
                     } => {
-                        let mut cache = cache.unwrap_or(
-                            // Try using one in the pool if it exists.
-                            self.cache_pool.pop().unwrap_or(
-                                // No caches in pool. Create a new one.
-                                DataBlockCache::new(self.num_channels),
-                            ),
-                        );
-
-                        let current_frame = self.decoder.current_frame();
-
-                        // Seek to the position the client wants to cache.
-                        if let Err(e) = self.decoder.seek_to(start_frame) {
-                            self.send_msg(ServerToClientMsg::FatalError(e));
-                            self.run = false;
-                            break;
-                        }
-
-                        // Fill the cache
-                        for block in cache.blocks.iter_mut() {
-                            if let Err(e) = self.decoder.decode_into(block) {
-                                self.send_msg(ServerToClientMsg::FatalError(e));
-                                self.run = false;
-                                break;
-                            }
-                        }
-
-                        // Seek back to the previous position.
-                        if let Err(e) = self.decoder.seek_to(current_frame) {
-                            self.send_msg(ServerToClientMsg::FatalError(e));
-                            self.run = false;
-                            break;
-                        }
-
-                        self.send_msg(ServerToClientMsg::CacheRes {
-                            cache_index,
-                            cache,
-                            wanted_start_frame: start_frame,
-                        });
+                        // Prioritize read blocks over caching.
+                        cache_requests.push((cache_index, cache, start_frame));
                     }
                     ClientToServerMsg::DisposeCache { cache } => {
                         // Store the cache to be reused.
                         self.cache_pool.push(cache);
                     }
                 }
+            }
+
+            while let Some((cache_index, cache, start_frame)) = cache_requests.pop() {
+                let mut cache = cache.unwrap_or(
+                    // Try using one in the pool if it exists.
+                    self.cache_pool.pop().unwrap_or(
+                        // No caches in pool. Create a new one.
+                        DataBlockCache::new(self.num_channels),
+                    ),
+                );
+
+                let current_frame = self.decoder.current_frame();
+
+                // Seek to the position the client wants to cache.
+                if let Err(e) = self.decoder.seek_to(start_frame) {
+                    self.send_msg(ServerToClientMsg::FatalError(e));
+                    self.run = false;
+                    break;
+                }
+
+                // Fill the cache
+                for block in cache.blocks.iter_mut() {
+                    if let Err(e) = self.decoder.decode_into(block) {
+                        self.send_msg(ServerToClientMsg::FatalError(e));
+                        self.run = false;
+                        break;
+                    }
+                }
+
+                // Seek back to the previous position.
+                if let Err(e) = self.decoder.seek_to(current_frame) {
+                    self.send_msg(ServerToClientMsg::FatalError(e));
+                    self.run = false;
+                    break;
+                }
+
+                self.send_msg(ServerToClientMsg::CacheRes {
+                    cache_index,
+                    cache,
+                    wanted_start_frame: start_frame,
+                });
             }
 
             std::thread::sleep(SERVER_WAIT_TIME);

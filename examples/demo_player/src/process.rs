@@ -1,4 +1,3 @@
-use eframe::egui::paint::stats;
 use rt_audio_disk_stream::ReadClient;
 use rtrb::{Consumer, Producer};
 
@@ -150,7 +149,7 @@ impl Process {
                         let _ = self.to_gui_tx.push(ProcessToGuiMsg::Buffering);
 
                         // We can choose to either continue reading (which will return silence),
-                        // or pause playback until the buffer is filled.
+                        // or pause playback until the buffer is filled. This demo uses the former.
                     }
                 }
                 Err(e) => {

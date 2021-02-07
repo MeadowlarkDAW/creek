@@ -18,6 +18,9 @@ pub struct DemoPlayerApp {
     frame_close_tx: Producer<()>,
     frame_close_rx: Option<Consumer<()>>,
 
+    loop_start: usize,
+    loop_end: usize,
+
     buffering_anim: usize,
 }
 
@@ -27,7 +30,7 @@ impl DemoPlayerApp {
         from_player_rx: Consumer<ProcessToGuiMsg>,
     ) -> Self {
         let mut test_client =
-            AudioDiskStream::open_read("./test_files/wav_i24_mono.wav", 0, 3, true).unwrap();
+            AudioDiskStream::open_read("./test_files/wav_i24_stereo.wav", 0, 3, false).unwrap();
 
         test_client.seek_to(0, 0).unwrap();
         test_client.block_until_ready().unwrap();
@@ -38,10 +41,13 @@ impl DemoPlayerApp {
             .push(GuiToProcessMsg::UseStream(test_client))
             .unwrap();
 
+        let loop_start = 0;
+        let loop_end = num_frames;
+
         to_player_tx
             .push(GuiToProcessMsg::SetLoop {
-                start: 0,
-                end: num_frames,
+                start: loop_start,
+                end: loop_end,
             })
             .unwrap();
 
@@ -58,6 +64,9 @@ impl DemoPlayerApp {
 
             to_player_tx,
             from_player_rx,
+
+            loop_start,
+            loop_end,
 
             buffering_anim: 0,
         }
@@ -128,6 +137,33 @@ impl epi::App for DemoPlayerApp {
                 }
             });
 
+            let mut loop_start = self.loop_start;
+            let mut loop_end = self.loop_end;
+            ui.add(egui::Slider::usize(&mut loop_start, 0..=self.num_frames).text("loop start"));
+            ui.add(egui::Slider::usize(&mut loop_end, 0..=self.num_frames).text("loop end"));
+            if loop_start != self.loop_start || loop_end != self.loop_end {
+                if ui.input().mouse.released || ui.input().key_pressed(egui::Key::Enter) {
+                    if loop_end <= loop_start {
+                        if loop_start == self.num_frames {
+                            loop_start = self.num_frames - 1;
+                            loop_end = self.num_frames;
+                        } else {
+                            loop_end = loop_start + 1;
+                        }
+                    };
+
+                    self.loop_start = loop_start;
+                    self.loop_end = loop_end;
+
+                    self.to_player_tx
+                        .push(GuiToProcessMsg::SetLoop {
+                            start: loop_start,
+                            end: loop_end,
+                        })
+                        .unwrap();
+                }
+            }
+
             if self.buffering_anim > 0 {
                 ui.label(
                     egui::Label::new("Status: Buffered")
@@ -141,9 +177,13 @@ impl epi::App for DemoPlayerApp {
                 );
             }
 
-            let (_, user_seeked) =
-                self.transport_control
-                    .ui(ui, &mut self.current_frame, self.num_frames);
+            let (_, user_seeked) = self.transport_control.ui(
+                ui,
+                &mut self.current_frame,
+                self.num_frames,
+                self.loop_start,
+                self.loop_end,
+            );
 
             if user_seeked {
                 let _ = self
@@ -163,6 +203,7 @@ impl Drop for DemoPlayerApp {
 struct TransportControl {
     rail_stroke: egui::Stroke,
     handle_stroke: egui::Stroke,
+    loop_stroke: egui::Stroke,
 
     seeking: bool,
 }
@@ -172,6 +213,7 @@ impl Default for TransportControl {
         Self {
             rail_stroke: egui::Stroke::new(1.0, egui::Color32::GRAY),
             handle_stroke: egui::Stroke::new(1.0, egui::Color32::WHITE),
+            loop_stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 255, 0)),
             seeking: false,
         }
     }
@@ -185,6 +227,8 @@ impl TransportControl {
         ui: &mut egui::Ui,
         value: &mut usize,
         max_value: usize,
+        loop_start: usize,
+        loop_end: usize,
     ) -> (egui::Response, bool) {
         let (response, painter) =
             ui.allocate_painter(ui.available_size_before_wrap_finite(), egui::Sense::drag());
@@ -204,6 +248,18 @@ impl TransportControl {
                 egui::Pos2::new(end_x, rail_y),
             ],
             self.rail_stroke,
+        ));
+
+        // Drop loop range.
+        let loop_start_x = start_x + ((loop_start as f32 / max_value as f32) * rail_width);
+        let loop_end_x = start_x + ((loop_end as f32 / max_value as f32) * rail_width);
+
+        shapes.push(egui::Shape::line_segment(
+            [
+                egui::Pos2::new(loop_start_x, rail_y),
+                egui::Pos2::new(loop_end_x, rail_y),
+            ],
+            self.loop_stroke,
         ));
 
         if let Some(press_origin) = ui.input().mouse.press_origin {

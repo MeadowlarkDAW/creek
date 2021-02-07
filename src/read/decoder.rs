@@ -182,14 +182,16 @@ impl Decoder {
         self.reset_smp_buffer = true;
         self.curr_smp_buf_i = 0;
 
-        //let decoder_opts = DecoderOptions {
-        //verify: self.verify,
-        //..Default::default()
-        //};
+        /*
+        let decoder_opts = DecoderOptions {
+            verify: false,
+            ..Default::default()
+        };
 
-        //self.decoder.close();
-        //self.decoder = symphonia::default::get_codecs()
-        //.make(self.decoder.codec_params(), &decoder_opts)?;
+        self.decoder.close();
+        self.decoder = symphonia::default::get_codecs()
+            .make(self.decoder.codec_params(), &decoder_opts)?;
+            */
 
         Ok(())
     }

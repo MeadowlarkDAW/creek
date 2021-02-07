@@ -34,6 +34,9 @@ impl ReadClient {
     ) -> Self {
         let read_buffer = DataBlock::new(file_info.num_channels);
 
+        // Reserve the first cache as a temporary cache.
+        let max_num_caches = max_num_caches + 1;
+
         let mut caches: Vec<DataBlockCacheEntry> = Vec::with_capacity(max_num_caches);
         for _ in 0..max_num_caches {
             caches.push(DataBlockCacheEntry {
@@ -80,45 +83,72 @@ impl ReadClient {
     pub fn max_num_caches(&self) -> usize {
         // This check should never fail because it can only be `None` in the destructor.
         if let Some(heap) = &self.heap_data {
-            heap.caches.len()
+            heap.caches.len() - 1
         } else {
             0
         }
     }
 
     pub fn cache(&mut self, cache_index: usize, start_frame: usize) -> Result<bool, ReadError> {
+        let cache_index = cache_index + 1;
+
         if self.error {
             return Err(ReadError::ServerClosed);
         }
 
         // This check should never fail because it can only be `None` in the destructor.
-        let caches = &mut self
+        let heap = self
             .heap_data
             .as_mut()
-            .ok_or_else(|| ReadError::UnknownFatalError)?
-            .caches;
+            .ok_or_else(|| ReadError::UnknownFatalError)?;
 
-        if cache_index >= caches.len() {
+        if cache_index >= heap.caches.len() {
             return Err(ReadError::CacheIndexOutOfRange {
-                index: cache_index,
-                caches_len: caches.len(),
+                index: cache_index - 1,
+                caches_len: heap.caches.len(),
             });
         }
 
         let mut do_cache = true;
-        if caches[cache_index].wanted_start_frame == start_frame {
-            if caches[cache_index].cache.is_some() {
+        if heap.caches[cache_index].wanted_start_frame == start_frame {
+            if heap.caches[cache_index].cache.is_some() {
                 do_cache = false;
             }
         }
 
         if do_cache {
-            if self.to_server_tx.is_full() {
+            // Check that at-least two message slots are open.
+            if self.to_server_tx.slots() < 2 {
                 return Err(ReadError::MsgChannelFull);
             }
 
-            caches[cache_index].wanted_start_frame = start_frame;
-            let cache = caches[cache_index].cache.take();
+            heap.caches[cache_index].wanted_start_frame = start_frame;
+            let mut cache = heap.caches[cache_index].cache.take();
+
+            // If any blocks are currently using this cache, then set this cache as the
+            // temporary cache and tell each block to use that instead.
+            let mut using_cache = false;
+            for block in heap.prefetch_buffer.iter_mut() {
+                if let Some(index) = block.use_cache {
+                    if index == cache_index {
+                        // cache_index 0 == temporary cache
+                        block.use_cache = Some(0);
+                        using_cache = true;
+                    }
+                }
+            }
+            if using_cache {
+                if let Some(cache) = heap.caches[0].cache.take() {
+                    // Tell the server to deallocate the old temporary cache.
+                    // This cannot fail because we made sure that a slot is available in
+                    // the previous step.
+                    let _ = self
+                        .to_server_tx
+                        .push(ClientToServerMsg::DisposeCache { cache });
+                }
+
+                heap.caches[0].cache = cache.take();
+            }
 
             // This cannot fail because we made sure that a slot is available in
             // the previous step.
@@ -135,6 +165,8 @@ impl ReadClient {
     }
 
     pub fn seek_to(&mut self, cache_index: usize, start_frame: usize) -> Result<bool, ReadError> {
+        let cache_index = cache_index + 1;
+
         if self.error {
             return Err(ReadError::ServerClosed);
         }
@@ -144,7 +176,7 @@ impl ReadClient {
             return Err(ReadError::MsgChannelFull);
         }
 
-        let cache_exists = self.cache(cache_index, start_frame)?;
+        let cache_exists = self.cache(cache_index - 1, start_frame)?;
 
         self.current_block_start_frame = start_frame;
         self.current_frame_in_block = 0;

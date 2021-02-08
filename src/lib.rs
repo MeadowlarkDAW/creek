@@ -9,11 +9,11 @@ pub use read::{Decoder, FileInfo, OpenError, ReadClient, ReadError};
 
 use read::{ClientToServerMsg, HeapData, ReadServer, ServerToClientMsg};
 
-pub static DEFAULT_NUM_LOOK_AHEAD_BLOCKS: usize = 5;
+pub static DEFAULT_NUM_LOOK_AHEAD_BLOCKS: usize = 10;
 pub static DEFAULT_NUM_CACHE_BLOCKS: usize = 10;
 pub static DEFAULT_NUM_CACHES: usize = 1;
 
-pub const BLOCK_SIZE: usize = 32768;
+pub const BLOCK_SIZE: usize = 16384;
 const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);
 
 static SILENCE_BUFFER: [f32; BLOCK_SIZE] = [0.0; BLOCK_SIZE];

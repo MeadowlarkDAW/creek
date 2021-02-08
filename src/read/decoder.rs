@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::path::PathBuf;
 
+use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{CodecParameters, Decoder as SymphDecoder, DecoderOptions};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekTo};
@@ -8,10 +9,9 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::core::units::Duration;
-use symphonia::core::{audio::SampleBuffer, errors::SeekErrorKind};
 
 use super::{
-    error::{self, OpenError, ReadError},
+    error::{OpenError, ReadError},
     DataBlock,
 };
 use crate::BLOCK_SIZE;
@@ -173,7 +173,7 @@ impl Decoder {
         match self.reader.seek(SeekTo::Time {
             time: seconds.into(),
         }) {
-            Ok(res) => {}
+            Ok(_res) => {}
             Err(e) => {
                 return Err(e.into());
             }

@@ -22,6 +22,8 @@ pub struct DemoPlayerApp {
     loop_end: usize,
 
     buffering_anim: usize,
+
+    cache_size: usize,
 }
 
 impl DemoPlayerApp {
@@ -33,6 +35,8 @@ impl DemoPlayerApp {
             num_caches: 2,
             ..Default::default()
         };
+
+        let cache_size = opts.num_cache_blocks * rt_audio_disk_stream::BLOCK_SIZE;
 
         let mut test_client =
             AudioDiskStream::open_read("./test_files/wav_i24_stereo.wav", 0, opts).unwrap();
@@ -75,6 +79,8 @@ impl DemoPlayerApp {
             loop_end,
 
             buffering_anim: 0,
+
+            cache_size,
         }
     }
 }
@@ -189,6 +195,7 @@ impl epi::App for DemoPlayerApp {
                 self.num_frames,
                 self.loop_start,
                 self.loop_end,
+                self.cache_size,
             );
 
             if user_seeked {
@@ -210,6 +217,7 @@ struct TransportControl {
     rail_stroke: egui::Stroke,
     handle_stroke: egui::Stroke,
     loop_stroke: egui::Stroke,
+    cache_stroke: egui::Stroke,
 
     seeking: bool,
 }
@@ -220,6 +228,7 @@ impl Default for TransportControl {
             rail_stroke: egui::Stroke::new(1.0, egui::Color32::GRAY),
             handle_stroke: egui::Stroke::new(1.0, egui::Color32::WHITE),
             loop_stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 255, 0)),
+            cache_stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 0, 255)),
             seeking: false,
         }
     }
@@ -235,6 +244,7 @@ impl TransportControl {
         max_value: usize,
         loop_start: usize,
         loop_end: usize,
+        cache_size: usize,
     ) -> (egui::Response, bool) {
         let (response, painter) =
             ui.allocate_painter(ui.available_size_before_wrap_finite(), egui::Sense::drag());
@@ -302,6 +312,20 @@ impl TransportControl {
             ],
             self.handle_stroke,
         ));
+
+        // Draw cached ranges.
+        let caches: [usize; 2] = [0, loop_start];
+        let cache_width = (cache_size as f32 / max_value as f32) * rail_width;
+        for cache_pos in caches.iter() {
+            let x = start_x + ((*cache_pos as f32 / max_value as f32) * rail_width);
+            shapes.push(egui::Shape::line_segment(
+                [
+                    egui::Pos2::new(x, rail_y + 30.0),
+                    egui::Pos2::new(x + cache_width, rail_y + 30.0),
+                ],
+                self.cache_stroke,
+            ));
+        }
 
         painter.extend(shapes);
 

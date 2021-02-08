@@ -34,7 +34,7 @@ impl DataBlockCache {
 }
 
 pub(crate) struct DataBlockEntry {
-    pub use_cache: Option<usize>,
+    pub use_cache_index: Option<usize>,
     pub block: Option<DataBlock>,
     pub wanted_start_frame: usize,
 }

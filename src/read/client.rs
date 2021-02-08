@@ -256,17 +256,15 @@ impl ReadClient {
                 self.next_block_index = 0;
             }
 
-            let mut wanted_start_frame = self.current_block_start_frame;
             // Tell remaining blocks to use the cache.
             for i in block_i..heap.prefetch_buffer.len() {
                 heap.prefetch_buffer[i].use_cache_index = Some(cache_index);
-                heap.prefetch_buffer[i].wanted_start_frame = wanted_start_frame;
-                wanted_start_frame += BLOCK_SIZE;
             }
 
             // Request the server to start fetching blocks ahead of the cache.
             // This cannot fail because we made sure that a slot is available in
             // the previous step.
+            let mut wanted_start_frame = cache_start_frame + self.prefetch_size;
             let _ = self.to_server_tx.push(ClientToServerMsg::SeekTo {
                 frame: wanted_start_frame,
             });
@@ -299,11 +297,8 @@ impl ReadClient {
             });
 
             // Tell each prefetch block to use the cache.
-            let mut wanted_start_frame = start_frame;
             for block in heap.prefetch_buffer.iter_mut() {
                 block.use_cache_index = Some(cache_index);
-                block.wanted_start_frame = wanted_start_frame;
-                wanted_start_frame += BLOCK_SIZE;
             }
         }
 

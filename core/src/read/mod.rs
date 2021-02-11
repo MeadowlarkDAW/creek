@@ -12,40 +12,40 @@ pub use client::ReadClient;
 pub use data::DataBlock;
 pub use data::ReadData;
 pub use decoder::{Decoder, FileInfo};
-pub use error::{OpenError, ReadError};
+pub use error::ReadError;
 
-pub(crate) enum ServerToClientMsg {
+pub(crate) enum ServerToClientMsg<D: Decoder> {
     ReadIntoBlockRes {
         block_index: usize,
-        block: DataBlock,
+        block: DataBlock<D::T>,
         wanted_start_frame: usize,
     },
     CacheRes {
         cache_index: usize,
-        cache: DataBlockCache,
+        cache: DataBlockCache<D::T>,
         wanted_start_frame: usize,
     },
-    FatalError(ReadError),
+    FatalError(D::FatalError),
 }
 
-pub(crate) enum ClientToServerMsg {
+pub(crate) enum ClientToServerMsg<D: Decoder> {
     ReadIntoBlock {
         block_index: usize,
-        block: Option<DataBlock>,
+        block: Option<DataBlock<D::T>>,
         start_frame: usize,
     },
     DisposeBlock {
-        block: DataBlock,
+        block: DataBlock<D::T>,
     },
     SeekTo {
         frame: usize,
     },
     Cache {
         cache_index: usize,
-        cache: Option<DataBlockCache>,
+        cache: Option<DataBlockCache<D::T>>,
         start_frame: usize,
     },
     DisposeCache {
-        cache: DataBlockCache,
+        cache: DataBlockCache<D::T>,
     },
 }

@@ -1,0 +1,11 @@
+[package]
+name = "rt-audio-disk-stream-symphonia"
+version = "0.1.0"
+authors = ["Billy Messenger <BillyDM@protonmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rt-audio-disk-stream-core = { path = "../core" }
+symphonia = { git = "https://github.com/pdeljanov/Symphonia.git", branch = "master" }

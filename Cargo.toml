@@ -15,10 +15,15 @@ readme = "README.md"
 
 [workspace]
 members = [
+    "core",
+    "symphonia",
     "examples/demo_player",
 ]
 
+[features]
+default = ["symphonia"]
+symphonia = ["rt-audio-disk-stream-symphonia"]
+
 [dependencies]
-rtrb = "0.1.2"
-#symphonia = { version = "0.1.0", features = ["mp3"] }
-symphonia = { git = "https://github.com/pdeljanov/Symphonia.git", branch = "master" }
+rt-audio-disk-stream-core = { path = "core" }
+rt-audio-disk-stream-symphonia = { path = "symphonia", optional = true }

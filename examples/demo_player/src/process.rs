@@ -1,4 +1,4 @@
-use rt_audio_disk_stream::ReadClient;
+use rt_audio_disk_stream::{Decoder, ReadClient, ReadError, SymphoniaDecoder};
 use rtrb::{Consumer, Producer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
@@ -10,7 +10,7 @@ pub enum TransportState {
 }
 
 pub struct Process {
-    read_client: Option<ReadClient>,
+    read_client: Option<ReadClient<SymphoniaDecoder>>,
 
     to_gui_tx: Producer<ProcessToGuiMsg>,
     from_gui_rx: Consumer<GuiToProcessMsg>,
@@ -121,7 +121,7 @@ impl Process {
 
                             if let Some(read_client) = &mut self.read_client {
                                 // cache-index 2 == temporary seek cache
-                                if let Err(e) = read_client.seek_to(pos, None) {
+                                if let Err(e) = read_client.seek(pos, None) {
                                     println!("{:?}", e);
                                     self.fatal_error = true;
                                     return;
@@ -160,7 +160,7 @@ impl Process {
             }
 
             while data.len() > 1 {
-                let read_frames = (data.len() / 2).min(rt_audio_disk_stream::BLOCK_SIZE);
+                let read_frames = (data.len() / 2).min(read_client.block_size());
 
                 match read_client.read(read_frames) {
                     Ok(read_data) => {
@@ -209,7 +209,7 @@ impl Process {
                                     1
                                 };
 
-                                read_client.seek_to(self.loop_start, Some(cache_index))
+                                read_client.seek(self.loop_start, Some(cache_index))
                             } {
                                 println!("{:?}", e);
                                 self.fatal_error = true;
@@ -264,7 +264,9 @@ impl Process {
         */
     }
 
-    fn go_to_loop_start(&mut self) -> Result<bool, rt_audio_disk_stream::ReadError> {
+    fn go_to_loop_start(
+        &mut self,
+    ) -> Result<bool, ReadError<<SymphoniaDecoder as Decoder>::FatalError>> {
         self.transport_pos = self.loop_start;
 
         let cache_index = if self.loop_start == 0 {
@@ -276,7 +278,7 @@ impl Process {
         };
 
         if let Some(read_client) = &mut self.read_client {
-            return read_client.seek_to(self.loop_start, Some(cache_index));
+            return read_client.seek(self.loop_start, Some(cache_index));
         }
 
         Ok(false)

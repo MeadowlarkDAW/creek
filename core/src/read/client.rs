@@ -1,18 +1,17 @@
 use rtrb::{Consumer, Producer};
 
-use crate::{BLOCK_SIZE, SERVER_WAIT_TIME, SILENCE_BUFFER};
-
 use super::{
-    ClientToServerMsg, DataBlock, DataBlockCacheEntry, DataBlockEntry, FileInfo, HeapData,
+    ClientToServerMsg, DataBlock, DataBlockCacheEntry, DataBlockEntry, Decoder, FileInfo, HeapData,
     ReadData, ReadError, ServerToClientMsg,
 };
+use crate::SERVER_WAIT_TIME;
 
-pub struct ReadClient {
-    to_server_tx: Producer<ClientToServerMsg>,
-    from_server_rx: Consumer<ServerToClientMsg>,
-    close_signal_tx: Producer<Option<HeapData>>,
+pub struct ReadClient<D: Decoder> {
+    to_server_tx: Producer<ClientToServerMsg<D>>,
+    from_server_rx: Consumer<ServerToClientMsg<D>>,
+    close_signal_tx: Producer<Option<HeapData<D::T>>>,
 
-    heap_data: Option<HeapData>,
+    heap_data: Option<HeapData<D::T>>,
 
     current_block_index: usize,
     next_block_index: usize,
@@ -26,30 +25,32 @@ pub struct ReadClient {
     num_prefetch_blocks: usize,
     prefetch_size: usize,
     cache_size: usize,
+    block_size: usize,
 
-    file_info: FileInfo,
+    file_info: FileInfo<D::FileParams>,
     error: bool,
 }
 
-impl ReadClient {
+impl<D: Decoder> ReadClient<D> {
     pub(crate) fn new(
-        to_server_tx: Producer<ClientToServerMsg>,
-        from_server_rx: Consumer<ServerToClientMsg>,
-        close_signal_tx: Producer<Option<HeapData>>,
+        to_server_tx: Producer<ClientToServerMsg<D>>,
+        from_server_rx: Consumer<ServerToClientMsg<D>>,
+        close_signal_tx: Producer<Option<HeapData<D::T>>>,
         start_frame: usize,
         num_cache_blocks: usize,
         num_look_ahead_blocks: usize,
         max_num_caches: usize,
-        file_info: FileInfo,
+        block_size: usize,
+        file_info: FileInfo<D::FileParams>,
     ) -> Self {
         let num_prefetch_blocks = num_cache_blocks + num_look_ahead_blocks;
 
-        let read_buffer = DataBlock::new(file_info.num_channels);
+        let read_buffer = DataBlock::new(file_info.num_channels, block_size);
 
         // Reserve the last two caches as temporary caches.
         let max_num_caches = max_num_caches + 2;
 
-        let mut caches: Vec<DataBlockCacheEntry> = Vec::with_capacity(max_num_caches);
+        let mut caches: Vec<DataBlockCacheEntry<D::T>> = Vec::with_capacity(max_num_caches);
         for _ in 0..max_num_caches {
             caches.push(DataBlockCacheEntry {
                 cache: None,
@@ -60,7 +61,8 @@ impl ReadClient {
         let temp_cache_index = max_num_caches - 1;
         let temp_seek_cache_index = max_num_caches - 2;
 
-        let mut prefetch_buffer: Vec<DataBlockEntry> = Vec::with_capacity(num_prefetch_blocks);
+        let mut prefetch_buffer: Vec<DataBlockEntry<D::T>> =
+            Vec::with_capacity(num_prefetch_blocks);
         let mut wanted_start_frame = start_frame;
         for _ in 0..num_prefetch_blocks {
             prefetch_buffer.push(DataBlockEntry {
@@ -69,7 +71,7 @@ impl ReadClient {
                 wanted_start_frame,
             });
 
-            wanted_start_frame += BLOCK_SIZE;
+            wanted_start_frame += block_size;
         }
 
         let heap_data = Some(HeapData {
@@ -95,8 +97,9 @@ impl ReadClient {
             is_temp_cache: false,
 
             num_prefetch_blocks,
-            prefetch_size: num_prefetch_blocks * BLOCK_SIZE,
-            cache_size: num_cache_blocks * BLOCK_SIZE,
+            prefetch_size: num_prefetch_blocks * block_size,
+            cache_size: num_cache_blocks * block_size,
+            block_size,
 
             file_info,
             error: false,
@@ -112,7 +115,11 @@ impl ReadClient {
         }
     }
 
-    pub fn cache(&mut self, cache_index: usize, start_frame: usize) -> Result<bool, ReadError> {
+    pub fn cache(
+        &mut self,
+        cache_index: usize,
+        start_frame: usize,
+    ) -> Result<bool, ReadError<D::FatalError>> {
         if self.error {
             return Err(ReadError::ServerClosed);
         }
@@ -134,7 +141,10 @@ impl ReadClient {
 
         let mut do_cache = true;
         let cache_start_frame = heap.caches[cache_index].wanted_start_frame;
-        if start_frame >= cache_start_frame && start_frame < cache_start_frame + self.cache_size {
+        if start_frame == cache_start_frame
+            || (start_frame > cache_start_frame
+                && start_frame < cache_start_frame + self.cache_size)
+        {
             if heap.caches[cache_index].cache.is_some() {
                 do_cache = false;
             }
@@ -187,11 +197,11 @@ impl ReadClient {
         Ok(true)
     }
 
-    pub fn seek_to(
+    pub fn seek(
         &mut self,
         start_frame: usize,
         cache_index: Option<usize>,
-    ) -> Result<bool, ReadError> {
+    ) -> Result<bool, ReadError<D::FatalError>> {
         if self.error {
             return Err(ReadError::ServerClosed);
         }
@@ -215,8 +225,9 @@ impl ReadClient {
             for i in 0..heap.caches.len() - 2 {
                 if heap.caches[i].cache.is_some() {
                     let cache_start_frame = heap.caches[i].wanted_start_frame;
-                    if start_frame >= cache_start_frame
-                        && start_frame < cache_start_frame + self.cache_size
+                    if start_frame == cache_start_frame
+                        || (start_frame > cache_start_frame
+                            && start_frame < cache_start_frame + self.cache_size)
                     {
                         found_cache = Some(i);
                         break;
@@ -243,12 +254,12 @@ impl ReadClient {
             let cache_start_frame = heap.caches[cache_index].wanted_start_frame;
             let mut delta = start_frame - cache_start_frame;
             let mut block_i = 0;
-            while delta >= BLOCK_SIZE {
+            while delta >= self.block_size {
                 block_i += 1;
-                delta -= BLOCK_SIZE;
+                delta -= self.block_size
             }
 
-            self.current_block_start_frame = cache_start_frame + (block_i * BLOCK_SIZE);
+            self.current_block_start_frame = cache_start_frame + (block_i * self.block_size);
             self.current_frame_in_block = delta;
             self.current_block_index = block_i;
             self.next_block_index = block_i + 1;
@@ -280,7 +291,7 @@ impl ReadClient {
                 });
                 heap.prefetch_buffer[i].use_cache_index = None;
                 heap.prefetch_buffer[i].wanted_start_frame = wanted_start_frame;
-                wanted_start_frame += BLOCK_SIZE;
+                wanted_start_frame += self.block_size;
             }
         } else {
             // Start from beginning of new cache.
@@ -309,7 +320,7 @@ impl ReadClient {
     ///
     /// Note the `read()` method can still be called if this returns false,
     /// it will just output silence instead.
-    pub fn is_ready(&mut self) -> Result<bool, ReadError> {
+    pub fn is_ready(&mut self) -> Result<bool, ReadError<D::FatalError>> {
         self.poll()?;
 
         // This check should never fail because it can only be `None` in the destructor.
@@ -349,7 +360,7 @@ impl ReadClient {
     }
 
     // This should not be used in a real-time situation.
-    pub fn block_until_ready(&mut self) -> Result<(), ReadError> {
+    pub fn block_until_ready(&mut self) -> Result<(), ReadError<D::FatalError>> {
         loop {
             if self.is_ready()? {
                 break;
@@ -361,7 +372,7 @@ impl ReadClient {
         Ok(())
     }
 
-    fn poll(&mut self) -> Result<(), ReadError> {
+    fn poll(&mut self) -> Result<(), ReadError<D::FatalError>> {
         // Retrieve any data sent from the server.
 
         // This check should never fail because it can only be `None` in the destructor.
@@ -438,7 +449,7 @@ impl ReadClient {
                     }
                     ServerToClientMsg::FatalError(e) => {
                         self.error = true;
-                        return Err(e.into());
+                        return Err(ReadError::FatalError(e));
                     }
                 }
             } else {
@@ -450,13 +461,16 @@ impl ReadClient {
     }
 
     /// Read the next slice of data with length `length`.
-    pub fn read(&mut self, mut frames: usize) -> Result<ReadData, ReadError> {
+    pub fn read(&mut self, mut frames: usize) -> Result<ReadData<D::T>, ReadError<D::FatalError>> {
         if self.error {
             return Err(ReadError::ServerClosed);
         }
 
-        if frames > BLOCK_SIZE {
-            return Err(ReadError::ReadLengthOutOfRange(frames));
+        if frames > self.block_size {
+            return Err(ReadError::ReadIndexOutOfRange {
+                index: self.current_frame() + frames,
+                len: self.file_info.num_frames,
+            });
         }
 
         self.poll()?;
@@ -479,11 +493,11 @@ impl ReadClient {
         }
 
         let end_frame_in_block = self.current_frame_in_block + frames;
-        if end_frame_in_block > BLOCK_SIZE {
+        if end_frame_in_block > self.block_size {
             // Data spans between two blocks, so two copies need to be performed.
 
             // Copy from first block.
-            let first_len = BLOCK_SIZE - self.current_frame_in_block;
+            let first_len = self.block_size - self.current_frame_in_block;
             let second_len = frames - first_len;
             {
                 // This check should never fail because it can only be `None` in the destructor.
@@ -519,15 +533,17 @@ impl ReadClient {
                 for i in 0..heap.read_buffer.block.len() {
                     let read_buffer_part = &mut heap.read_buffer.block[i][0..first_len];
 
-                    let from_buffer_part = if let Some(block) = current_block_data {
-                        &block.block[i]
-                            [self.current_frame_in_block..self.current_frame_in_block + first_len]
+                    if let Some(block) = current_block_data {
+                        let from_buffer_part = &block.block[i]
+                            [self.current_frame_in_block..self.current_frame_in_block + first_len];
+
+                        read_buffer_part.copy_from_slice(from_buffer_part);
                     } else {
                         // Output silence.
-                        &SILENCE_BUFFER[0..first_len]
+                        for i in 0..first_len {
+                            read_buffer_part[i] = Default::default();
+                        }
                     };
-
-                    read_buffer_part.copy_from_slice(from_buffer_part);
                 }
 
                 // Keep this from growing indefinitely.
@@ -572,14 +588,16 @@ impl ReadClient {
                     let read_buffer_part =
                         &mut heap.read_buffer.block[i][first_len..first_len + second_len];
 
-                    let from_buffer_part = if let Some(block) = next_block_data {
-                        &block.block[i][0..second_len]
+                    if let Some(block) = next_block_data {
+                        let from_buffer_part = &block.block[i][0..second_len];
+
+                        read_buffer_part.copy_from_slice(from_buffer_part);
                     } else {
                         // Output silence.
-                        &SILENCE_BUFFER[0..second_len]
+                        for i in 0..second_len {
+                            read_buffer_part[i] = Default::default();
+                        }
                     };
-
-                    read_buffer_part.copy_from_slice(from_buffer_part);
                 }
 
                 self.current_frame_in_block = second_len;
@@ -620,20 +638,22 @@ impl ReadClient {
                 for i in 0..heap.read_buffer.block.len() {
                     let read_buffer_part = &mut heap.read_buffer.block[i][0..frames];
 
-                    let from_buffer_part = if let Some(block) = current_block_data {
-                        &block.block[i]
-                            [self.current_frame_in_block..self.current_frame_in_block + frames]
+                    if let Some(block) = current_block_data {
+                        let from_buffer_part = &block.block[i]
+                            [self.current_frame_in_block..self.current_frame_in_block + frames];
+
+                        read_buffer_part.copy_from_slice(from_buffer_part);
                     } else {
                         // Output silence.
-                        &SILENCE_BUFFER[0..frames]
+                        for i in 0..frames {
+                            read_buffer_part[i] = Default::default();
+                        }
                     };
-
-                    read_buffer_part.copy_from_slice(from_buffer_part);
                 }
             }
 
             self.current_frame_in_block = end_frame_in_block;
-            if self.current_frame_in_block == BLOCK_SIZE {
+            if self.current_frame_in_block == self.block_size {
                 self.advance_to_next_block()?;
                 self.current_frame_in_block = 0;
             }
@@ -653,7 +673,7 @@ impl ReadClient {
         ))
     }
 
-    fn advance_to_next_block(&mut self) -> Result<(), ReadError> {
+    fn advance_to_next_block(&mut self) -> Result<(), ReadError<D::FatalError>> {
         // This check should never fail because it can only be `None` in the destructor.
         let heap = self
             .heap_data
@@ -688,7 +708,7 @@ impl ReadClient {
             self.next_block_index = 0;
         }
 
-        self.current_block_start_frame += BLOCK_SIZE;
+        self.current_block_start_frame += self.block_size;
 
         Ok(())
     }
@@ -697,12 +717,16 @@ impl ReadClient {
         self.current_block_start_frame + self.current_frame_in_block
     }
 
-    pub fn info(&self) -> &FileInfo {
+    pub fn info(&self) -> &FileInfo<D::FileParams> {
         &self.file_info
+    }
+
+    pub fn block_size(&self) -> usize {
+        self.block_size
     }
 }
 
-impl Drop for ReadClient {
+impl<D: Decoder> Drop for ReadClient<D> {
     fn drop(&mut self) {
         // Tell the server to deallocate any heap data.
         // This cannot fail because this is the only place the signal is ever sent.

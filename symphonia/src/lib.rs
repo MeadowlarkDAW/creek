@@ -10,22 +10,12 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::core::units::Duration;
 
-use super::{
-    error::{OpenError, ReadError},
-    DataBlock,
-};
-use crate::BLOCK_SIZE;
+use rt_audio_disk_stream_core::{DataBlock, Decoder, FileInfo};
 
-#[derive(Clone)]
-pub struct FileInfo {
-    pub params: CodecParameters,
+mod error;
+pub use error::OpenError;
 
-    pub num_frames: usize,
-    pub num_channels: usize,
-    pub sample_rate: Option<u32>,
-}
-
-pub struct Decoder {
+pub struct SymphoniaDecoder {
     reader: Box<dyn FormatReader>,
     decoder: Box<dyn SymphDecoder>,
 
@@ -35,17 +25,30 @@ pub struct Decoder {
     num_frames: usize,
     num_channels: usize,
     sample_rate: Option<u32>,
+    block_size: usize,
 
     current_frame: usize,
     reset_smp_buffer: bool,
 }
 
-impl Decoder {
-    pub fn new(
+impl Decoder for SymphoniaDecoder {
+    type T = f32;
+    type FileParams = CodecParameters;
+    type OpenError = OpenError;
+    type FatalError = Error;
+    type AdditionalOpts = ();
+
+    const DEFAULT_BLOCK_SIZE: usize = 16384;
+    const DEFAULT_NUM_CACHE_BLOCKS: usize = 0;
+    const DEFAULT_NUM_LOOK_AHEAD_BLOCKS: usize = 8;
+    const DEFAULT_NUM_CACHES: usize = 1;
+
+    fn new(
         file: PathBuf,
         start_frame: usize,
-        verify: bool,
-    ) -> Result<(Self, FileInfo), OpenError> {
+        block_size: usize,
+        _additional_opts: Self::AdditionalOpts,
+    ) -> Result<(Self, FileInfo<Self::FileParams>), Self::OpenError> {
         // Create a hint to help the format registry guess what format reader is appropriate.
         let mut hint = Hint::new();
 
@@ -71,7 +74,6 @@ impl Decoder {
         let mut reader = probed.format;
 
         let decoder_opts = DecoderOptions {
-            verify,
             ..Default::default()
         };
 
@@ -150,6 +152,7 @@ impl Decoder {
                 num_frames,
                 num_channels,
                 sample_rate,
+                block_size,
 
                 current_frame: start_frame,
                 reset_smp_buffer: false,
@@ -158,7 +161,7 @@ impl Decoder {
         ))
     }
 
-    pub fn seek_to(&mut self, frame: usize) -> Result<(), ReadError> {
+    fn seek(&mut self, frame: usize) -> Result<(), Self::FatalError> {
         if frame >= self.num_frames {
             // Do nothing if out of range.
             self.current_frame = self.num_frames;
@@ -175,7 +178,7 @@ impl Decoder {
         }) {
             Ok(_res) => {}
             Err(e) => {
-                return Err(e.into());
+                return Err(e);
             }
         }
 
@@ -196,7 +199,10 @@ impl Decoder {
         Ok(())
     }
 
-    pub fn decode_into(&mut self, data_block: &mut DataBlock) -> Result<(), ReadError> {
+    unsafe fn decode(
+        &mut self,
+        data_block: &mut DataBlock<Self::T>,
+    ) -> Result<(), Self::FatalError> {
         if self.current_frame >= self.num_frames {
             // Do nothing if reached the end of the file.
             return Ok(());
@@ -205,7 +211,7 @@ impl Decoder {
         let mut reached_end_of_file = false;
 
         let mut block_start = 0;
-        while block_start < BLOCK_SIZE {
+        while block_start < self.block_size {
             let num_frames_to_cpy = if self.reset_smp_buffer {
                 // Get new data first.
                 self.reset_smp_buffer = false;
@@ -215,7 +221,7 @@ impl Decoder {
                 0
             } else {
                 // Find the maximum amount of frames that can be copied.
-                (BLOCK_SIZE - block_start)
+                (self.block_size - block_start)
                     .min((self.smp_buf.len() - self.curr_smp_buf_i) / self.num_channels)
             };
 
@@ -282,7 +288,7 @@ impl Decoder {
                                 }
                                 Err(e) => {
                                     // Errors other than decode errors are fatal.
-                                    return Err(e.into());
+                                    return Err(e);
                                 }
                             }
                         }
@@ -291,13 +297,13 @@ impl Decoder {
                                 if io_error.kind() == std::io::ErrorKind::UnexpectedEof {
                                     // End of file, stop decoding.
                                     reached_end_of_file = true;
-                                    block_start = BLOCK_SIZE;
+                                    block_start = self.block_size;
                                     break;
                                 } else {
-                                    return Err(e.into());
+                                    return Err(e);
                                 }
                             } else {
-                                return Err(e.into());
+                                return Err(e);
                             }
                         }
                     }
@@ -308,18 +314,18 @@ impl Decoder {
         if reached_end_of_file {
             self.current_frame = self.num_frames;
         } else {
-            self.current_frame += BLOCK_SIZE;
+            self.current_frame += self.block_size;
         }
 
         Ok(())
     }
 
-    pub fn current_frame(&self) -> usize {
+    fn current_frame(&self) -> usize {
         self.current_frame
     }
 }
 
-impl Drop for Decoder {
+impl Drop for SymphoniaDecoder {
     fn drop(&mut self) {
         self.decoder.close();
     }
@@ -349,7 +355,8 @@ mod tests {
 
         for file in files {
             dbg!(file.0);
-            let decoder = Decoder::new(file.0.into(), 0, false);
+            let decoder =
+                SymphoniaDecoder::new(file.0.into(), 0, SymphoniaDecoder::DEFAULT_BLOCK_SIZE, ());
             match decoder {
                 Ok((_, file_info)) => {
                     assert_eq!(file_info.num_channels, file.1);

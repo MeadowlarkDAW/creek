@@ -4,41 +4,43 @@ use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::SERVER_WAIT_TIME;
 
-use super::error::OpenError;
 use super::{
     ClientToServerMsg, DataBlock, DataBlockCache, Decoder, FileInfo, HeapData, ServerToClientMsg,
 };
 
-pub(crate) struct ReadServer {
-    to_client_tx: Producer<ServerToClientMsg>,
-    from_client_rx: Consumer<ClientToServerMsg>,
-    close_signal_rx: Consumer<Option<HeapData>>,
+pub(crate) struct ReadServer<D: Decoder> {
+    to_client_tx: Producer<ServerToClientMsg<D>>,
+    from_client_rx: Consumer<ClientToServerMsg<D>>,
+    close_signal_rx: Consumer<Option<HeapData<D::T>>>,
 
-    decoder: Decoder,
+    decoder: D,
 
-    block_pool: Vec<DataBlock>,
-    cache_pool: Vec<DataBlockCache>,
+    block_pool: Vec<DataBlock<D::T>>,
+    cache_pool: Vec<DataBlockCache<D::T>>,
 
     num_channels: usize,
     num_prefetch_blocks: usize,
+    block_size: usize,
 
     run: bool,
 }
 
-impl ReadServer {
+impl<D: Decoder> ReadServer<D> {
     pub fn new(
         file: PathBuf,
-        verify: bool,
         start_frame: usize,
         num_prefetch_blocks: usize,
-        to_client_tx: Producer<ServerToClientMsg>,
-        from_client_rx: Consumer<ClientToServerMsg>,
-        close_signal_rx: Consumer<Option<HeapData>>,
-    ) -> Result<FileInfo, OpenError> {
-        let (mut open_tx, mut open_rx) = RingBuffer::<Result<FileInfo, OpenError>>::new(1).split();
+        block_size: usize,
+        to_client_tx: Producer<ServerToClientMsg<D>>,
+        from_client_rx: Consumer<ClientToServerMsg<D>>,
+        close_signal_rx: Consumer<Option<HeapData<D::T>>>,
+        additional_opts: D::AdditionalOpts,
+    ) -> Result<FileInfo<D::FileParams>, D::OpenError> {
+        let (mut open_tx, mut open_rx) =
+            RingBuffer::<Result<FileInfo<D::FileParams>, D::OpenError>>::new(1).split();
 
         std::thread::spawn(move || {
-            match Decoder::new(file, start_frame, verify) {
+            match D::new(file, start_frame, block_size, additional_opts) {
                 Ok((decoder, file_info)) => {
                     let num_channels = file_info.num_channels;
 
@@ -54,6 +56,7 @@ impl ReadServer {
                         cache_pool: Vec::new(),
                         num_channels,
                         num_prefetch_blocks,
+                        block_size,
                         run: true,
                     });
                 }
@@ -74,7 +77,7 @@ impl ReadServer {
     }
 
     fn run(mut self) {
-        let mut cache_requests: Vec<(usize, Option<DataBlockCache>, usize)> = Vec::new();
+        let mut cache_requests: Vec<(usize, Option<DataBlockCache<D::T>>, usize)> = Vec::new();
 
         while self.run {
             // Check for close signal.
@@ -96,11 +99,15 @@ impl ReadServer {
                             // Try using one in the pool if it exists.
                             self.block_pool.pop().unwrap_or(
                                 // No blocks in pool. Create a new one.
-                                DataBlock::new(self.num_channels),
+                                DataBlock::new(self.num_channels, self.block_size),
                             ),
                         );
 
-                        match self.decoder.decode_into(&mut block) {
+                        // Safe because we assume that the decoder will correctly fill the block
+                        // with data.
+                        let decode_res = unsafe { self.decoder.decode(&mut block) };
+
+                        match decode_res {
                             Ok(()) => {
                                 self.send_msg(ServerToClientMsg::ReadIntoBlockRes {
                                     block_index,
@@ -120,7 +127,7 @@ impl ReadServer {
                         self.block_pool.push(block);
                     }
                     ClientToServerMsg::SeekTo { frame } => {
-                        if let Err(e) = self.decoder.seek_to(frame) {
+                        if let Err(e) = self.decoder.seek(frame) {
                             self.send_msg(ServerToClientMsg::FatalError(e));
                             self.run = false;
                             break;
@@ -146,14 +153,18 @@ impl ReadServer {
                     // Try using one in the pool if it exists.
                     self.cache_pool.pop().unwrap_or(
                         // No caches in pool. Create a new one.
-                        DataBlockCache::new(self.num_channels, self.num_prefetch_blocks),
+                        DataBlockCache::new(
+                            self.num_channels,
+                            self.num_prefetch_blocks,
+                            self.block_size,
+                        ),
                     ),
                 );
 
                 let current_frame = self.decoder.current_frame();
 
                 // Seek to the position the client wants to cache.
-                if let Err(e) = self.decoder.seek_to(start_frame) {
+                if let Err(e) = self.decoder.seek(start_frame) {
                     self.send_msg(ServerToClientMsg::FatalError(e));
                     self.run = false;
                     break;
@@ -161,7 +172,11 @@ impl ReadServer {
 
                 // Fill the cache
                 for block in cache.blocks.iter_mut() {
-                    if let Err(e) = self.decoder.decode_into(block) {
+                    // Safe because we assume that the decoder will correctly fill the block
+                    // with data.
+                    let decode_res = unsafe { self.decoder.decode(block) };
+
+                    if let Err(e) = decode_res {
                         self.send_msg(ServerToClientMsg::FatalError(e));
                         self.run = false;
                         break;
@@ -169,7 +184,7 @@ impl ReadServer {
                 }
 
                 // Seek back to the previous position.
-                if let Err(e) = self.decoder.seek_to(current_frame) {
+                if let Err(e) = self.decoder.seek(current_frame) {
                     self.send_msg(ServerToClientMsg::FatalError(e));
                     self.run = false;
                     break;
@@ -186,7 +201,7 @@ impl ReadServer {
         }
     }
 
-    fn send_msg(&mut self, msg: ServerToClientMsg) {
+    fn send_msg(&mut self, msg: ServerToClientMsg<D>) {
         // Block until message can be sent.
         loop {
             if !self.to_client_tx.is_full() {

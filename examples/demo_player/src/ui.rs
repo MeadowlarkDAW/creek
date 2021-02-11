@@ -1,5 +1,5 @@
 use eframe::{egui, epi};
-use rt_audio_disk_stream::AudioDiskStream;
+use rt_audio_disk_stream::{AudioDiskStream, Decoder, SymphoniaDecoder};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
@@ -33,16 +33,17 @@ impl DemoPlayerApp {
     ) -> Self {
         let opts = rt_audio_disk_stream::StreamOptions {
             num_caches: 2,
+            num_cache_blocks: 20,
             ..Default::default()
         };
 
-        let cache_size = opts.num_cache_blocks * rt_audio_disk_stream::BLOCK_SIZE;
+        let cache_size = opts.num_cache_blocks * SymphoniaDecoder::DEFAULT_BLOCK_SIZE;
 
         let mut test_client =
             AudioDiskStream::open_read("./test_files/wav_i24_stereo.wav", 0, opts).unwrap();
 
         // Cache the start of the file and store it in cache number 0.
-        test_client.seek_to(0, Some(0)).unwrap();
+        test_client.seek(0, Some(0)).unwrap();
         test_client.block_until_ready().unwrap();
 
         let num_frames = test_client.info().num_frames;

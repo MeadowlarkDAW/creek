@@ -1,4 +1,4 @@
-use rt_audio_disk_stream::ReadClient;
+use rt_audio_disk_stream::{ReadClient, SymphoniaDecoder};
 use rtrb::RingBuffer;
 
 mod output;
@@ -6,7 +6,7 @@ mod process;
 mod ui;
 
 pub enum GuiToProcessMsg {
-    UseStream(ReadClient),
+    UseStream(ReadClient<SymphoniaDecoder>),
     SetLoop { start: usize, end: usize },
     PlayResume,
     Pause,

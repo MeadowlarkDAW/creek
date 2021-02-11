@@ -20,7 +20,6 @@ pub struct ReadClient<D: Decoder> {
 
     temp_cache_index: usize,
     temp_seek_cache_index: usize,
-    is_temp_cache: bool,
 
     num_prefetch_blocks: usize,
     prefetch_size: usize,
@@ -94,7 +93,6 @@ impl<D: Decoder> ReadClient<D> {
 
             temp_cache_index,
             temp_seek_cache_index,
-            is_temp_cache: false,
 
             num_prefetch_blocks,
             prefetch_size: num_prefetch_blocks * block_size,
@@ -115,6 +113,21 @@ impl<D: Decoder> ReadClient<D> {
         }
     }
 
+    pub fn is_using_cache(&mut self, cache_index: usize) -> bool {
+        // This check should never fail because it can only be `None` in the destructor.
+        let heap = self.heap_data.as_ref().unwrap();
+
+        for block in &heap.prefetch_buffer {
+            if let Some(index) = block.use_cache_index {
+                if index == cache_index {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     pub fn cache(
         &mut self,
         cache_index: usize,
@@ -130,29 +143,18 @@ impl<D: Decoder> ReadClient<D> {
             .as_mut()
             .ok_or_else(|| ReadError::UnknownFatalError)?;
 
-        if self.is_temp_cache {
-            self.is_temp_cache = false;
-        } else if cache_index >= heap.caches.len() - 2 {
+        if cache_index >= heap.caches.len() - 2 {
             return Err(ReadError::CacheIndexOutOfRange {
                 index: cache_index,
                 caches_len: heap.caches.len() - 2,
             });
         }
 
-        let mut do_cache = true;
-        let cache_start_frame = heap.caches[cache_index].wanted_start_frame;
-        if start_frame == cache_start_frame
-            || (start_frame > cache_start_frame
-                && start_frame < cache_start_frame + self.cache_size)
+        if start_frame != heap.caches[cache_index].wanted_start_frame
+            || heap.caches[cache_index].cache.is_none()
         {
-            if heap.caches[cache_index].cache.is_some() {
-                do_cache = false;
-            }
-        }
-
-        if do_cache {
             // Check that at-least two message slots are open.
-            if self.to_server_tx.slots() < 2 {
+            if self.to_server_tx.slots() < 2 + self.num_prefetch_blocks {
                 return Err(ReadError::MsgChannelFull);
             }
 
@@ -162,22 +164,44 @@ impl<D: Decoder> ReadClient<D> {
             // If any blocks are currently using this cache, then set this cache as the
             // temporary cache and tell each block to use that instead.
             let mut using_cache = false;
+            let mut using_temp_cache = false;
             for block in heap.prefetch_buffer.iter_mut() {
                 if let Some(index) = block.use_cache_index {
                     if index == cache_index {
                         block.use_cache_index = Some(self.temp_cache_index);
                         using_cache = true;
+                    } else if index == self.temp_cache_index {
+                        using_temp_cache = true;
                     }
                 }
             }
             if using_cache {
-                if let Some(cache) = heap.caches[self.temp_cache_index].cache.take() {
+                if let Some(old_cache) = heap.caches[self.temp_cache_index].cache.take() {
+                    // If any blocks are currently using the old temporary cache, dispose those blocks.
+                    if using_temp_cache {
+                        for block in heap.prefetch_buffer.iter_mut() {
+                            if let Some(index) = block.use_cache_index {
+                                if index == self.temp_cache_index {
+                                    block.use_cache_index = None;
+                                    if let Some(block) = block.block.take() {
+                                        // Tell the server to deallocate the old block.
+                                        // This cannot fail because we made sure that a slot is available in
+                                        // the previous step.
+                                        let _ = self
+                                            .to_server_tx
+                                            .push(ClientToServerMsg::DisposeBlock { block });
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Tell the server to deallocate the old temporary cache.
                     // This cannot fail because we made sure that a slot is available in
                     // the previous step.
                     let _ = self
                         .to_server_tx
-                        .push(ClientToServerMsg::DisposeCache { cache });
+                        .push(ClientToServerMsg::DisposeCache { cache: old_cache });
                 }
 
                 heap.caches[self.temp_cache_index].cache = cache.take();
@@ -191,10 +215,10 @@ impl<D: Decoder> ReadClient<D> {
                 start_frame,
             });
 
-            return Ok(false);
+            return Ok(true);
         }
 
-        Ok(true)
+        Ok(false)
     }
 
     pub fn seek(
@@ -211,17 +235,28 @@ impl<D: Decoder> ReadClient<D> {
             return Err(ReadError::MsgChannelFull);
         }
 
-        let cache_index = if let Some(cache_index) = cache_index {
-            cache_index
-        } else {
-            // This check should never fail because it can only be `None` in the destructor.
-            let heap = self
-                .heap_data
-                .as_ref()
-                .ok_or_else(|| ReadError::UnknownFatalError)?;
+        // This check should never fail because it can only be `None` in the destructor.
+        let heap = self
+            .heap_data
+            .as_mut()
+            .ok_or_else(|| ReadError::UnknownFatalError)?;
 
+        let mut found_cache = None;
+
+        if let Some(cache_index) = cache_index {
+            if heap.caches[cache_index].cache.is_some() {
+                let cache_start_frame = heap.caches[cache_index].wanted_start_frame;
+                if start_frame == cache_start_frame
+                    || (start_frame > cache_start_frame
+                        && start_frame < cache_start_frame + self.cache_size)
+                {
+                    found_cache = Some(cache_index);
+                }
+            }
+        }
+
+        if found_cache.is_none() {
             // Check previous caches.
-            let mut found_cache = None;
             for i in 0..heap.caches.len() - 2 {
                 if heap.caches[i].cache.is_some() {
                     let cache_start_frame = heap.caches[i].wanted_start_frame;
@@ -234,22 +269,9 @@ impl<D: Decoder> ReadClient<D> {
                     }
                 }
             }
+        }
 
-            found_cache.unwrap_or({
-                self.is_temp_cache = true;
-                self.temp_seek_cache_index
-            })
-        };
-
-        let cache_exists = self.cache(cache_index, start_frame)?;
-
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self
-            .heap_data
-            .as_mut()
-            .ok_or_else(|| ReadError::UnknownFatalError)?;
-
-        if cache_exists {
+        if let Some(cache_index) = found_cache {
             // Find the position in the old cache.
             let cache_start_frame = heap.caches[cache_index].wanted_start_frame;
             let mut delta = start_frame - cache_start_frame;
@@ -293,7 +315,19 @@ impl<D: Decoder> ReadClient<D> {
                 heap.prefetch_buffer[i].wanted_start_frame = wanted_start_frame;
                 wanted_start_frame += self.block_size;
             }
+
+            Ok(true)
         } else {
+            // Create a new temporary seek cache.
+            // This cannot fail because we made sure that a slot is available in
+            // the previous step.
+            heap.caches[self.temp_seek_cache_index].wanted_start_frame = start_frame;
+            let _ = self.to_server_tx.push(ClientToServerMsg::Cache {
+                cache_index: self.temp_seek_cache_index,
+                cache: heap.caches[self.temp_seek_cache_index].cache.take(),
+                start_frame,
+            });
+
             // Start from beginning of new cache.
             self.current_block_start_frame = start_frame;
             self.current_frame_in_block = 0;
@@ -304,16 +338,16 @@ impl<D: Decoder> ReadClient<D> {
             // This cannot fail because we made sure that a slot is available in
             // the previous step.
             let _ = self.to_server_tx.push(ClientToServerMsg::SeekTo {
-                frame: self.current_block_start_frame + (self.prefetch_size),
+                frame: self.current_block_start_frame + self.prefetch_size,
             });
 
             // Tell each prefetch block to use the cache.
             for block in heap.prefetch_buffer.iter_mut() {
-                block.use_cache_index = Some(cache_index);
+                block.use_cache_index = Some(self.temp_seek_cache_index);
             }
-        }
 
-        Ok(cache_exists)
+            Ok(false)
+        }
     }
 
     /// Returns true if there is data to be read, false otherwise.

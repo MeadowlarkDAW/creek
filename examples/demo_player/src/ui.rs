@@ -42,7 +42,8 @@ impl DemoPlayerApp {
         let mut test_client =
             AudioDiskStream::open_read("./test_files/wav_i24_stereo.wav", 0, opts).unwrap();
 
-        // Cache the start of the file and store it in cache number 0.
+        // Cache the start of the file into cache number 0 and seek to it.
+        let _ = test_client.cache(0, 0);
         test_client.seek(0, Some(0)).unwrap();
         test_client.block_until_ready().unwrap();
 

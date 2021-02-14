@@ -16,14 +16,16 @@ readme = "README.md"
 [workspace]
 members = [
     "core",
-    "symphonia",
+    "wav_only",
     "examples/demo_player",
 ]
 
 [features]
-default = ["symphonia"]
-symphonia = ["rt-audio-disk-stream-symphonia"]
+default = ["wav-only"]
+wav-only = ["rt-audio-disk-stream-wav-only"]
+open-source = []
+all_codecs = []
 
 [dependencies]
 rt-audio-disk-stream-core = { path = "core" }
-rt-audio-disk-stream-symphonia = { path = "symphonia", optional = true }
+rt-audio-disk-stream-wav-only = { path = "wav_only", optional = true }

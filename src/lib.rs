@@ -1,4 +1,4 @@
 pub use rt_audio_disk_stream_core::*;
 
-#[cfg(feature = "symphonia")]
-pub use rt_audio_disk_stream_symphonia::*;
+#[cfg(feature = "wav-only")]
+pub use rt_audio_disk_stream_wav_only::*;

@@ -35,7 +35,7 @@ impl DemoPlayerApp {
     ) -> Self {
         // Setup read stream -------------------------------------------------------------
 
-        let opts = rt_audio_disk_stream::ReadOptions {
+        let opts = rt_audio_disk_stream::ReadStreamOptions {
             // The number of prefetch blocks in a cache block. This will cause a cache to be
             // used whenever the stream is seeked to a frame in the range:
             //

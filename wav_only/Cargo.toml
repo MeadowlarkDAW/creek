@@ -1,5 +1,5 @@
 [package]
-name = "rt-audio-disk-stream-symphonia"
+name = "rt-audio-disk-stream-wav-only"
 version = "0.1.0"
 authors = ["Billy Messenger <BillyDM@protonmail.com>"]
 edition = "2018"
@@ -8,4 +8,4 @@ edition = "2018"
 
 [dependencies]
 rt-audio-disk-stream-core = { path = "../core" }
-symphonia = { git = "https://github.com/pdeljanov/Symphonia.git", branch = "master" }
+symphonia = { git = "https://github.com/pdeljanov/Symphonia.git", branch = "master", default-features = false, features=["wav"] }

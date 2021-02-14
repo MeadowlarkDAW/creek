@@ -13,7 +13,7 @@ const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);
 
 /// Options for a read stream.
 #[derive(Debug, Clone, Copy)]
-pub struct ReadOptions<D: Decoder> {
+pub struct ReadStreamOptions<D: Decoder> {
     /// The number of prefetch blocks in a cache block. This will cause a cache to be
     /// used whenever the stream is seeked to a frame in the range:
     ///
@@ -28,7 +28,7 @@ pub struct ReadOptions<D: Decoder> {
     /// The default is `1`.
     pub num_caches: usize,
 
-    /// Any addition decoder-specific options.
+    /// Any additional decoder-specific options.
     pub additional_opts: D::AdditionalOpts,
 
     /// The number of prefetch blocks to store ahead of the cache block. This must be
@@ -53,14 +53,14 @@ pub struct ReadOptions<D: Decoder> {
     pub server_msg_channel_size: Option<usize>,
 }
 
-impl<D: Decoder> Default for ReadOptions<D> {
+impl<D: Decoder> Default for ReadStreamOptions<D> {
     fn default() -> Self {
-        ReadOptions {
+        ReadStreamOptions {
             block_size: D::DEFAULT_BLOCK_SIZE,
             num_cache_blocks: D::DEFAULT_NUM_CACHE_BLOCKS,
+            additional_opts: Default::default(),
             num_look_ahead_blocks: D::DEFAULT_NUM_LOOK_AHEAD_BLOCKS,
             num_caches: 1,
-            additional_opts: Default::default(),
             server_msg_channel_size: None,
         }
     }
@@ -70,19 +70,19 @@ impl<D: Decoder> Default for ReadOptions<D> {
 ///
 /// * `file` - The path to the file to open.
 /// * `start_frame` - The frame in the file to start reading from.
-/// * `options` - Any additional options.
+/// * `stream_opts` - Additional stream options.
 pub fn open_read<D: Decoder, P: Into<PathBuf>>(
     file: P,
     start_frame: usize,
-    options: ReadOptions<D>,
+    stream_opts: ReadStreamOptions<D>,
 ) -> Result<ReadDiskStream<D>, D::OpenError> {
-    assert_ne!(options.block_size, 0);
-    assert_ne!(options.num_look_ahead_blocks, 0);
+    assert_ne!(stream_opts.block_size, 0);
+    assert_ne!(stream_opts.num_look_ahead_blocks, 0);
 
     // Reserve ample space for the message channels.
-    let msg_channel_size = options.server_msg_channel_size.unwrap_or(
-        ((options.num_cache_blocks + options.num_look_ahead_blocks) * 4)
-            + (options.num_caches * 4)
+    let msg_channel_size = stream_opts.server_msg_channel_size.unwrap_or(
+        ((stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks) * 4)
+            + (stream_opts.num_caches * 4)
             + 8,
     );
 
@@ -99,12 +99,12 @@ pub fn open_read<D: Decoder, P: Into<PathBuf>>(
     match ReadServer::new(
         file,
         start_frame,
-        options.num_cache_blocks + options.num_look_ahead_blocks,
-        options.block_size,
+        stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks,
+        stream_opts.block_size,
         to_client_tx,
         from_client_rx,
         close_signal_rx,
-        options.additional_opts,
+        stream_opts.additional_opts,
     ) {
         Ok(file_info) => {
             let client = ReadDiskStream::new(
@@ -112,10 +112,10 @@ pub fn open_read<D: Decoder, P: Into<PathBuf>>(
                 from_server_rx,
                 close_signal_tx,
                 start_frame,
-                options.num_cache_blocks,
-                options.num_look_ahead_blocks,
-                options.num_caches,
-                options.block_size,
+                stream_opts.num_cache_blocks,
+                stream_opts.num_look_ahead_blocks,
+                stream_opts.num_caches,
+                stream_opts.block_size,
                 file_info,
             );
 

@@ -74,7 +74,7 @@ impl Process {
 
                     if start != 0 {
                         if let Some(read_disk_stream) = &mut self.read_disk_stream {
-                            // cache loop starting position (cache_index 1 == loop start cache)
+                            // cache loop starting position (cache_index 1 = loop start cache)
                             read_disk_stream.cache(1, start)?;
                         }
                     }

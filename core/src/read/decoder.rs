@@ -51,6 +51,9 @@ pub trait Decoder: Sized + 'static {
     const DEFAULT_NUM_LOOK_AHEAD_BLOCKS: usize;
 
     /// Open the file and start reading from `start_frame`.
+    ///
+    /// Please note this algorithm depends on knowing the exact number of frames in a file.
+    /// Do **not** return an approximate length in the returned `FileInfo`.
     fn new(
         file: PathBuf,
         start_frame: usize,

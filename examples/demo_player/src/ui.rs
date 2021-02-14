@@ -4,6 +4,8 @@ use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
 
+// The "buffering" text can be too quick in release mode,
+// so keep it on screen for longer.
 static BUFFERING_FADEOUT_FRAMES: usize = 25;
 
 pub struct DemoPlayerApp {
@@ -31,21 +33,43 @@ impl DemoPlayerApp {
         mut to_player_tx: Producer<GuiToProcessMsg>,
         from_player_rx: Consumer<ProcessToGuiMsg>,
     ) -> Self {
+        // Setup read stream -------------------------------------------------------------
+
         let opts = rt_audio_disk_stream::ReadOptions {
-            num_caches: 2,
+            // The number of prefetch blocks in a cache block. This will cause a cache to be
+            // used whenever the stream is seeked to a frame in the range:
+            //
+            // `[cache_start, cache_start + (num_cache_blocks * block_size))`
+            //
+            // If this is 0, then the cache is only used when seeked to exactly `cache_start`.
             num_cache_blocks: 20,
+
+            // The maximum number of caches that can be active in this stream. Keep in mind each
+            // cache uses some memory (but memory is only allocated when the cache is created).
+            //
+            // The default is `1`.
+            num_caches: 2,
             ..Default::default()
         };
 
+        // This is how to calculate the total size of a cache block.
         let cache_size = opts.num_cache_blocks * SymphoniaDecoder::DEFAULT_BLOCK_SIZE;
 
+        // Open the read stream.
         let mut test_client =
             rt_audio_disk_stream::open_read("./test_files/wav_i24_stereo.wav", 0, opts).unwrap();
 
-        // Cache the start of the file into cache number 0 and seek to it.
+        // Cache the start of the file into cache with index `0`.
         let _ = test_client.cache(0, 0);
+
+        // Tell the stream to seek to the beginning of file. This will also alert the stream to the existence
+        // of the cache with index `0`.
         test_client.seek(0, Default::default()).unwrap();
+
+        // Wait until the buffer is filled before sending it to the process thread.
         test_client.block_until_ready().unwrap();
+
+        // ------------------------------------------------------------------------------
 
         let num_frames = test_client.info().num_frames;
 

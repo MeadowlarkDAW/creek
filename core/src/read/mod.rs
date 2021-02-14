@@ -1,6 +1,6 @@
-mod client;
 mod data;
 mod decoder;
+mod read_stream;
 mod server;
 
 pub mod error;
@@ -8,11 +8,11 @@ pub mod error;
 pub(crate) use data::{DataBlockCache, DataBlockCacheEntry, DataBlockEntry, HeapData};
 pub(crate) use server::ReadServer;
 
-pub use client::ReadClient;
 pub use data::DataBlock;
 pub use data::ReadData;
 pub use decoder::{Decoder, FileInfo};
 pub use error::ReadError;
+pub use read_stream::{ReadDiskStream, SeekMode};
 
 pub(crate) enum ServerToClientMsg<D: Decoder> {
     ReadIntoBlockRes {

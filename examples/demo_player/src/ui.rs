@@ -1,5 +1,5 @@
 use eframe::{egui, epi};
-use rt_audio_disk_stream::{AudioDiskStream, Decoder, SymphoniaDecoder};
+use rt_audio_disk_stream::{Decoder, SymphoniaDecoder};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
@@ -31,7 +31,7 @@ impl DemoPlayerApp {
         mut to_player_tx: Producer<GuiToProcessMsg>,
         from_player_rx: Consumer<ProcessToGuiMsg>,
     ) -> Self {
-        let opts = rt_audio_disk_stream::StreamOptions {
+        let opts = rt_audio_disk_stream::ReadOptions {
             num_caches: 2,
             num_cache_blocks: 20,
             ..Default::default()
@@ -40,11 +40,11 @@ impl DemoPlayerApp {
         let cache_size = opts.num_cache_blocks * SymphoniaDecoder::DEFAULT_BLOCK_SIZE;
 
         let mut test_client =
-            AudioDiskStream::open_read("./test_files/wav_i24_stereo.wav", 0, opts).unwrap();
+            rt_audio_disk_stream::open_read("./test_files/wav_i24_stereo.wav", 0, opts).unwrap();
 
         // Cache the start of the file into cache number 0 and seek to it.
         let _ = test_client.cache(0, 0);
-        test_client.seek(0, Some(0)).unwrap();
+        test_client.seek(0, Default::default()).unwrap();
         test_client.block_until_ready().unwrap();
 
         let num_frames = test_client.info().num_frames;
@@ -114,7 +114,7 @@ impl epi::App for DemoPlayerApp {
 
         while let Ok(msg) = self.from_player_rx.pop() {
             match msg {
-                ProcessToGuiMsg::TransportPos(pos) => {
+                ProcessToGuiMsg::PlaybackPos(pos) => {
                     self.current_frame = pos;
                 }
                 ProcessToGuiMsg::Buffering => {

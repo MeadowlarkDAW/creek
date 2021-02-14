@@ -5,7 +5,6 @@ pub enum ReadError<FatalError: Error> {
     FatalError(FatalError),
     EndOfFile,
     CacheIndexOutOfRange { index: usize, caches_len: usize },
-    ReadIndexOutOfRange { index: usize, len: usize },
     MsgChannelFull,
     ServerClosed,
     UnknownFatalError,
@@ -26,9 +25,6 @@ impl<FatalError: Error> std::fmt::Display for ReadError<FatalError> {
                 )
             }
             ReadError::MsgChannelFull => write!(f, "The message channel to the server is full."),
-            ReadError::ReadIndexOutOfRange { index, len } => {
-                write!(f, "Read index {} is out of range of maximum {}", index, len)
-            }
             ReadError::ServerClosed => write!(f, "Server closed unexpectedly"),
             ReadError::UnknownFatalError => write!(f, "An unkown fatal error occurred"),
         }

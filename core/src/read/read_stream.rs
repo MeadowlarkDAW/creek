@@ -6,7 +6,38 @@ use super::{
 };
 use crate::SERVER_WAIT_TIME;
 
-pub struct ReadClient<D: Decoder> {
+/// Describes how to search for suitable caches when seeking in a [`ReadDiskStream`].
+///
+/// If a suitable cache is found, then reading can resume immediately. If not, then
+/// the stream will need to buffer before it can read data. In this case, you may
+/// decide to either continue reading (which will return silence) or to pause
+/// playback temporarily.
+///
+/// [`ReadDiskStream`]: struct.ReadDiskStream.html
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SeekMode {
+    /// Automatically search for a suitable cache to use. This is the default mode.
+    Auto,
+    /// Only try one cache with the given index. If you already know a suitable cache,
+    /// this can be more performant than searching each cache individually.
+    TryOne(usize),
+    /// Try the given cache with the given index, and if it is not suitable, automatically
+    /// search for a suitable one. If you already know a suitable cache, this can be
+    /// more performant than searching each cache individually.
+    TryOneThenAuto(usize),
+    /// Seek without searching for a suitable cache. This **will** cause the stream
+    /// to buffer.
+    NoCache,
+}
+
+impl Default for SeekMode {
+    fn default() -> Self {
+        SeekMode::Auto
+    }
+}
+
+/// A realtime-safe disk-streaming reader of audio files.
+pub struct ReadDiskStream<D: Decoder> {
     to_server_tx: Producer<ClientToServerMsg<D>>,
     from_server_rx: Consumer<ServerToClientMsg<D>>,
     close_signal_tx: Producer<Option<HeapData<D::T>>>,
@@ -30,7 +61,7 @@ pub struct ReadClient<D: Decoder> {
     error: bool,
 }
 
-impl<D: Decoder> ReadClient<D> {
+impl<D: Decoder> ReadDiskStream<D> {
     pub(crate) fn new(
         to_server_tx: Producer<ClientToServerMsg<D>>,
         from_server_rx: Consumer<ServerToClientMsg<D>>,
@@ -104,6 +135,7 @@ impl<D: Decoder> ReadClient<D> {
         }
     }
 
+    /// Return the total number of caches available in this stream.
     pub fn num_caches(&self) -> usize {
         // This check should never fail because it can only be `None` in the destructor.
         if let Some(heap) = &self.heap_data {
@@ -113,21 +145,53 @@ impl<D: Decoder> ReadClient<D> {
         }
     }
 
-    pub fn is_using_cache(&mut self, cache_index: usize) -> bool {
+    /// Returns whether a cache can be moved seamlessly without silencing current playback (true)
+    /// or not (false).
+    ///
+    /// If the position of a cache is changed while the playback stream is currently relying on it,
+    /// then it will attempt to store the cache in a temporary buffer to allow playback to resume
+    /// seamlessly.
+    ///
+    /// However, in the case where the cache is moved multiple times in quick succession while being
+    /// relied on, then any blocks relying on the oldest cache will be silenced. In this case, (false)
+    /// will be returned.
+    pub fn can_move_cache(&mut self, cache_index: usize) -> bool {
         // This check should never fail because it can only be `None` in the destructor.
         let heap = self.heap_data.as_ref().unwrap();
 
+        let mut using_cache = false;
+        let mut using_temp_cache = false;
         for block in &heap.prefetch_buffer {
             if let Some(index) = block.use_cache_index {
                 if index == cache_index {
-                    return true;
+                    using_cache = true;
+                } else if index == self.temp_cache_index {
+                    using_temp_cache = true;
                 }
             }
         }
 
-        false
+        !(using_cache && using_temp_cache)
     }
 
+    /// Request to cache a new area in the file.
+    ///
+    /// * `cache_index` - The index of the cache to use. Use `ReadDiskStream::num_caches()` to see
+    /// how many caches have been assigned to this stream.
+    /// * `start_frame` - The frame in the file to start filling in the cache from. If any portion lies
+    /// outside the end of the file, then that portion will be ignored.
+    ///
+    /// If the cache already exists, then it will be overwritten. If the cache already starts from this
+    /// position, then nothing will be done and (false) will be returned. Otherwise, (true) will be
+    /// returned.
+    ///
+    /// In the case where the position of a cache is changed while the playback stream is currently
+    /// relying on it, then it will attempt to store the cache in a temporary buffer to allow playback
+    /// to resume seamlessly.
+    ///
+    /// However, in the case where the cache is moved multiple times in quick succession while being
+    /// relied on, then any blocks relying on the oldest cache will be silenced. See
+    /// `ReadDiskStream::can_move_cache()` to check if a cache can be seamlessly moved first.
     pub fn cache(
         &mut self,
         cache_index: usize,
@@ -138,10 +202,7 @@ impl<D: Decoder> ReadClient<D> {
         }
 
         // This check should never fail because it can only be `None` in the destructor.
-        let heap = self
-            .heap_data
-            .as_mut()
-            .ok_or_else(|| ReadError::UnknownFatalError)?;
+        let heap = self.heap_data.as_mut().unwrap();
 
         if cache_index >= heap.caches.len() - 2 {
             return Err(ReadError::CacheIndexOutOfRange {
@@ -221,10 +282,20 @@ impl<D: Decoder> ReadClient<D> {
         Ok(false)
     }
 
+    /// Request to seek playback to a new position in the file.
+    ///
+    /// * `frame` - The position in the file to seek to. If this lies outside of the end of
+    /// the file, then playback will return silence.
+    /// * `seek_mode` - Describes how to search for a suitable cache to use.
+    ///
+    /// If a suitable cache is found, then (true) is returned meaning that playback can resume immediately
+    /// without any buffering. Otherwise (false) is returned meaning that playback will need to
+    /// buffer first. In this case, you may choose to continue reading (which will return silence), or
+    /// to pause playback temporarily.
     pub fn seek(
         &mut self,
-        start_frame: usize,
-        cache_index: Option<usize>,
+        frame: usize,
+        seek_mode: SeekMode,
     ) -> Result<bool, ReadError<D::FatalError>> {
         if self.error {
             return Err(ReadError::ServerClosed);
@@ -236,19 +307,19 @@ impl<D: Decoder> ReadClient<D> {
         }
 
         // This check should never fail because it can only be `None` in the destructor.
-        let heap = self
-            .heap_data
-            .as_mut()
-            .ok_or_else(|| ReadError::UnknownFatalError)?;
+        let heap = self.heap_data.as_mut().unwrap();
 
         let mut found_cache = None;
 
-        if let Some(cache_index) = cache_index {
+        if let Some(cache_index) = match seek_mode {
+            SeekMode::TryOne(cache_index) => Some(cache_index),
+            SeekMode::TryOneThenAuto(cache_index) => Some(cache_index),
+            _ => None,
+        } {
             if heap.caches[cache_index].cache.is_some() {
                 let cache_start_frame = heap.caches[cache_index].wanted_start_frame;
-                if start_frame == cache_start_frame
-                    || (start_frame > cache_start_frame
-                        && start_frame < cache_start_frame + self.cache_size)
+                if frame == cache_start_frame
+                    || (frame > cache_start_frame && frame < cache_start_frame + self.cache_size)
                 {
                     found_cache = Some(cache_index);
                 }
@@ -256,16 +327,24 @@ impl<D: Decoder> ReadClient<D> {
         }
 
         if found_cache.is_none() {
-            // Check previous caches.
-            for i in 0..heap.caches.len() - 2 {
-                if heap.caches[i].cache.is_some() {
-                    let cache_start_frame = heap.caches[i].wanted_start_frame;
-                    if start_frame == cache_start_frame
-                        || (start_frame > cache_start_frame
-                            && start_frame < cache_start_frame + self.cache_size)
-                    {
-                        found_cache = Some(i);
-                        break;
+            let auto_search = match seek_mode {
+                SeekMode::Auto => true,
+                SeekMode::TryOneThenAuto(_) => true,
+                _ => false,
+            };
+
+            if auto_search {
+                // Check previous caches.
+                for i in 0..heap.caches.len() - 2 {
+                    if heap.caches[i].cache.is_some() {
+                        let cache_start_frame = heap.caches[i].wanted_start_frame;
+                        if frame == cache_start_frame
+                            || (frame > cache_start_frame
+                                && frame < cache_start_frame + self.cache_size)
+                        {
+                            found_cache = Some(i);
+                            break;
+                        }
                     }
                 }
             }
@@ -274,7 +353,7 @@ impl<D: Decoder> ReadClient<D> {
         if let Some(cache_index) = found_cache {
             // Find the position in the old cache.
             let cache_start_frame = heap.caches[cache_index].wanted_start_frame;
-            let mut delta = start_frame - cache_start_frame;
+            let mut delta = frame - cache_start_frame;
             let mut block_i = 0;
             while delta >= self.block_size {
                 block_i += 1;
@@ -321,15 +400,15 @@ impl<D: Decoder> ReadClient<D> {
             // Create a new temporary seek cache.
             // This cannot fail because we made sure that a slot is available in
             // the previous step.
-            heap.caches[self.temp_seek_cache_index].wanted_start_frame = start_frame;
+            heap.caches[self.temp_seek_cache_index].wanted_start_frame = frame;
             let _ = self.to_server_tx.push(ClientToServerMsg::Cache {
                 cache_index: self.temp_seek_cache_index,
                 cache: heap.caches[self.temp_seek_cache_index].cache.take(),
-                start_frame,
+                start_frame: frame,
             });
 
             // Start from beginning of new cache.
-            self.current_block_start_frame = start_frame;
+            self.current_block_start_frame = frame;
             self.current_frame_in_block = 0;
             self.current_block_index = 0;
             self.next_block_index = 1;
@@ -350,18 +429,16 @@ impl<D: Decoder> ReadClient<D> {
         }
     }
 
-    /// Returns true if there is data to be read, false otherwise.
+    /// Returns true if the stream is finished buffering and there is data can be read
+    /// right now, false otherwise.
     ///
-    /// Note the `read()` method can still be called if this returns false,
-    /// it will just output silence instead.
+    /// In the case where `false` is returned, then you may choose to continue reading
+    /// (which will return silence), or to pause playback temporarily.
     pub fn is_ready(&mut self) -> Result<bool, ReadError<D::FatalError>> {
         self.poll()?;
 
         // This check should never fail because it can only be `None` in the destructor.
-        let heap = self
-            .heap_data
-            .as_ref()
-            .ok_or_else(|| ReadError::UnknownFatalError)?;
+        let heap = self.heap_data.as_ref().unwrap();
 
         // Check if the next two blocks are ready.
 
@@ -393,7 +470,10 @@ impl<D: Decoder> ReadClient<D> {
         Ok(true)
     }
 
-    // This should not be used in a real-time situation.
+    /// Blocks the current thread until the stream is done buffering.
+    ///
+    /// NOTE: This should ***never*** be used in a real-time thread. This is only useful
+    /// for making sure a stream is ready before sending it to a realtime thread.
     pub fn block_until_ready(&mut self) -> Result<(), ReadError<D::FatalError>> {
         loop {
             if self.is_ready()? {
@@ -410,10 +490,7 @@ impl<D: Decoder> ReadClient<D> {
         // Retrieve any data sent from the server.
 
         // This check should never fail because it can only be `None` in the destructor.
-        let heap = self
-            .heap_data
-            .as_mut()
-            .ok_or_else(|| ReadError::UnknownFatalError)?;
+        let heap = self.heap_data.as_mut().unwrap();
 
         loop {
             // Check that there is at-least one slot open before popping the next message.
@@ -494,18 +571,26 @@ impl<D: Decoder> ReadClient<D> {
         Ok(())
     }
 
-    /// Read the next slice of data with length `length`.
+    /// Read the next chunk of `frames` in the stream from the current playhead position.
+    ///
+    /// This is *streaming*, meaning the next call to `read()` will pick up where the
+    /// previous call left off.
+    ///
+    /// If the stream is currently buffering, (false) will be returned, and the playhead will still
+    /// advance but will output silence. Otherwise, data can be read and (true) is returned. To check
+    /// if the stream is ready beforehand, call `ReadDiskStream::is_ready()`.
+    ///
+    /// If the end of a file is reached, then only the amount of frames up to the end will be returned,
+    /// and playback will return silence on each subsequent call to `read()`.
+    ///
+    /// NOTE: If the number of `frames` exceeds the block size of the decoder, then that block size
+    /// will be used instead. This can be retrieved using `ReadDiskStream::block_size()`.
     pub fn read(&mut self, mut frames: usize) -> Result<ReadData<D::T>, ReadError<D::FatalError>> {
         if self.error {
             return Err(ReadError::ServerClosed);
         }
 
-        if frames > self.block_size {
-            return Err(ReadError::ReadIndexOutOfRange {
-                index: self.current_frame() + frames,
-                len: self.file_info.num_frames,
-            });
-        }
+        frames = frames.min(self.block_size);
 
         self.poll()?;
 
@@ -515,14 +600,14 @@ impl<D: Decoder> ReadClient<D> {
         }
 
         // Check if the end of the file was reached.
-        if self.current_frame() >= self.file_info.num_frames {
+        if self.playhead() >= self.file_info.num_frames {
             self.current_block_start_frame = 0;
             self.current_frame_in_block = 0;
             return Err(ReadError::EndOfFile);
         }
         let mut reached_end_of_file = false;
-        if self.current_frame() + frames >= self.file_info.num_frames {
-            frames = self.file_info.num_frames - self.current_frame();
+        if self.playhead() + frames >= self.file_info.num_frames {
+            frames = self.file_info.num_frames - self.playhead();
             reached_end_of_file = true;
         }
 
@@ -535,10 +620,7 @@ impl<D: Decoder> ReadClient<D> {
             let second_len = frames - first_len;
             {
                 // This check should never fail because it can only be `None` in the destructor.
-                let heap = self
-                    .heap_data
-                    .as_mut()
-                    .ok_or_else(|| ReadError::UnknownFatalError)?;
+                let heap = self.heap_data.as_mut().unwrap();
 
                 // Get the first block of data.
                 let current_block_data = {
@@ -589,10 +671,7 @@ impl<D: Decoder> ReadClient<D> {
             // Copy from second block
             {
                 // This check should never fail because it can only be `None` in the destructor.
-                let heap = self
-                    .heap_data
-                    .as_mut()
-                    .ok_or_else(|| ReadError::UnknownFatalError)?;
+                let heap = self.heap_data.as_mut().unwrap();
 
                 // Get the next block of data.
                 let next_block_data = {
@@ -640,10 +719,7 @@ impl<D: Decoder> ReadClient<D> {
             // Only need to copy from current block.
             {
                 // This check should never fail because it can only be `None` in the destructor.
-                let heap = self
-                    .heap_data
-                    .as_mut()
-                    .ok_or_else(|| ReadError::UnknownFatalError)?;
+                let heap = self.heap_data.as_mut().unwrap();
 
                 // Get the first block of data.
                 let current_block_data = {
@@ -694,10 +770,7 @@ impl<D: Decoder> ReadClient<D> {
         }
 
         // This check should never fail because it can only be `None` in the destructor.
-        let heap = self
-            .heap_data
-            .as_mut()
-            .ok_or_else(|| ReadError::UnknownFatalError)?;
+        let heap = self.heap_data.as_mut().unwrap();
 
         // This check should never fail because it can only be `None` in the destructor.
         Ok(ReadData::new(
@@ -709,10 +782,7 @@ impl<D: Decoder> ReadClient<D> {
 
     fn advance_to_next_block(&mut self) -> Result<(), ReadError<D::FatalError>> {
         // This check should never fail because it can only be `None` in the destructor.
-        let heap = self
-            .heap_data
-            .as_mut()
-            .ok_or_else(|| ReadError::UnknownFatalError)?;
+        let heap = self.heap_data.as_mut().unwrap();
 
         let entry = &mut heap.prefetch_buffer[self.current_block_index];
 
@@ -747,20 +817,23 @@ impl<D: Decoder> ReadClient<D> {
         Ok(())
     }
 
-    pub fn current_frame(&self) -> usize {
+    /// Return the current frame of the playhead.
+    pub fn playhead(&self) -> usize {
         self.current_block_start_frame + self.current_frame_in_block
     }
 
+    /// Return info about the file.
     pub fn info(&self) -> &FileInfo<D::FileParams> {
         &self.file_info
     }
 
+    /// Return the block size used by this decoder.
     pub fn block_size(&self) -> usize {
         self.block_size
     }
 }
 
-impl<D: Decoder> Drop for ReadClient<D> {
+impl<D: Decoder> Drop for ReadDiskStream<D> {
     fn drop(&mut self) {
         // Tell the server to deallocate any heap data.
         // This cannot fail because this is the only place the signal is ever sent.

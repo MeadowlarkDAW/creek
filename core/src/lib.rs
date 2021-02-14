@@ -24,6 +24,8 @@ pub struct ReadOptions<D: Decoder> {
 
     /// The maximum number of caches that can be active in this stream. Keep in mind each
     /// cache uses some memory (but memory is only allocated when the cache is created).
+    ///
+    /// The default is `1`.
     pub num_caches: usize,
 
     /// Any addition decoder-specific options.
@@ -36,7 +38,7 @@ pub struct ReadOptions<D: Decoder> {
     /// This should be left alone unless you know what you are doing.
     pub num_look_ahead_blocks: usize,
 
-    /// The size of each prefetch block.
+    /// The number of frames in a prefetch block.
     ///
     /// This should be left alone unless you know what you are doing.
     pub block_size: usize,
@@ -57,7 +59,7 @@ impl<D: Decoder> Default for ReadOptions<D> {
             block_size: D::DEFAULT_BLOCK_SIZE,
             num_cache_blocks: D::DEFAULT_NUM_CACHE_BLOCKS,
             num_look_ahead_blocks: D::DEFAULT_NUM_LOOK_AHEAD_BLOCKS,
-            num_caches: D::DEFAULT_NUM_CACHES,
+            num_caches: 1,
             additional_opts: Default::default(),
             server_msg_channel_size: None,
         }

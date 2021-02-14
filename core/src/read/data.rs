@@ -1,3 +1,4 @@
+/// A prefetch data block.
 pub struct DataBlock<T: Copy + Clone + Default + Send> {
     pub block: Vec<Vec<T>>,
 }

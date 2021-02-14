@@ -41,7 +41,6 @@ impl Decoder for SymphoniaDecoder {
     const DEFAULT_BLOCK_SIZE: usize = 16384;
     const DEFAULT_NUM_CACHE_BLOCKS: usize = 0;
     const DEFAULT_NUM_LOOK_AHEAD_BLOCKS: usize = 8;
-    const DEFAULT_NUM_CACHES: usize = 1;
 
     fn new(
         file: PathBuf,

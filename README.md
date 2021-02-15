@@ -1,5 +1,5 @@
-# rt-audio-disk-stream
-Realtime disk streaming IO for audio
+# Realtime Audio Disk Stream
+Realtime disk streaming IO for audio files
 
 This crate is currently experimental and incomplete.
 

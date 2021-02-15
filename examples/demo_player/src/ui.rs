@@ -56,25 +56,29 @@ impl DemoPlayerApp {
         let cache_size = opts.num_cache_blocks * SymphoniaDecoder::DEFAULT_BLOCK_SIZE;
 
         // Open the read stream.
-        let mut test_client =
-            rt_audio_disk_stream::open_read("./test_files/wav_i24_stereo.wav", 0, opts).unwrap();
+        let mut read_stream = rt_audio_disk_stream::open_read::<SymphoniaDecoder, _>(
+            "./test_files/wav_i24_stereo.wav",
+            0,
+            opts,
+        )
+        .unwrap();
 
         // Cache the start of the file into cache with index `0`.
-        let _ = test_client.cache(0, 0);
+        let _ = read_stream.cache(0, 0);
 
         // Tell the stream to seek to the beginning of file. This will also alert the stream to the existence
         // of the cache with index `0`.
-        test_client.seek(0, Default::default()).unwrap();
+        read_stream.seek(0, Default::default()).unwrap();
 
         // Wait until the buffer is filled before sending it to the process thread.
-        test_client.block_until_ready().unwrap();
+        read_stream.block_until_ready().unwrap();
 
         // ------------------------------------------------------------------------------
 
-        let num_frames = test_client.info().num_frames;
+        let num_frames = read_stream.info().num_frames;
 
         to_player_tx
-            .push(GuiToProcessMsg::UseStream(test_client))
+            .push(GuiToProcessMsg::UseStream(read_stream))
             .unwrap();
 
         let loop_start = 0;

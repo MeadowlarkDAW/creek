@@ -2,11 +2,9 @@ use std::path::PathBuf;
 
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::SERVER_WAIT_TIME;
+use crate::{FileInfo, SERVER_WAIT_TIME};
 
-use super::{
-    ClientToServerMsg, DataBlock, DataBlockCache, Decoder, FileInfo, HeapData, ServerToClientMsg,
-};
+use super::{ClientToServerMsg, DataBlock, DataBlockCache, Decoder, HeapData, ServerToClientMsg};
 
 pub(crate) struct ReadServer<D: Decoder> {
     to_client_tx: Producer<ServerToClientMsg<D>>,
@@ -23,10 +21,11 @@ pub(crate) struct ReadServer<D: Decoder> {
     block_size: usize,
 
     run: bool,
+    client_closed: bool,
 }
 
 impl<D: Decoder> ReadServer<D> {
-    pub fn new(
+    pub(crate) fn new(
         file: PathBuf,
         start_frame: usize,
         num_prefetch_blocks: usize,
@@ -58,6 +57,7 @@ impl<D: Decoder> ReadServer<D> {
                         num_prefetch_blocks,
                         block_size,
                         run: true,
+                        client_closed: false,
                     });
                 }
                 Err(e) => {
@@ -80,11 +80,14 @@ impl<D: Decoder> ReadServer<D> {
         let mut cache_requests: Vec<(usize, Option<DataBlockCache<D::T>>, usize)> = Vec::new();
 
         while self.run {
+            let mut do_sleep = true;
+
             // Check for close signal.
             if let Ok(heap_data) = self.close_signal_rx.pop() {
                 // Drop heap data here.
                 let _ = heap_data;
                 self.run = false;
+                self.client_closed = true;
                 break;
             }
 
@@ -118,6 +121,7 @@ impl<D: Decoder> ReadServer<D> {
                             Err(e) => {
                                 self.send_msg(ServerToClientMsg::FatalError(e));
                                 self.run = false;
+                                do_sleep = false;
                                 break;
                             }
                         }
@@ -130,6 +134,7 @@ impl<D: Decoder> ReadServer<D> {
                         if let Err(e) = self.decoder.seek(frame) {
                             self.send_msg(ServerToClientMsg::FatalError(e));
                             self.run = false;
+                            do_sleep = false;
                             break;
                         }
                     }
@@ -167,6 +172,7 @@ impl<D: Decoder> ReadServer<D> {
                 if let Err(e) = self.decoder.seek(start_frame) {
                     self.send_msg(ServerToClientMsg::FatalError(e));
                     self.run = false;
+                    do_sleep = false;
                     break;
                 }
 
@@ -179,6 +185,7 @@ impl<D: Decoder> ReadServer<D> {
                     if let Err(e) = decode_res {
                         self.send_msg(ServerToClientMsg::FatalError(e));
                         self.run = false;
+                        do_sleep = false;
                         break;
                     }
                 }
@@ -187,6 +194,7 @@ impl<D: Decoder> ReadServer<D> {
                 if let Err(e) = self.decoder.seek(current_frame) {
                     self.send_msg(ServerToClientMsg::FatalError(e));
                     self.run = false;
+                    do_sleep = false;
                     break;
                 }
 
@@ -195,13 +203,40 @@ impl<D: Decoder> ReadServer<D> {
                     cache,
                     wanted_start_frame: start_frame,
                 });
+
+                // If any new messages have been recieved while caching, prioritize those
+                // over filling any additional caches.
+                if !self.from_client_rx.is_empty() {
+                    do_sleep = false;
+                    break;
+                }
             }
 
-            std::thread::sleep(SERVER_WAIT_TIME);
+            if do_sleep {
+                std::thread::sleep(SERVER_WAIT_TIME);
+            }
+        }
+
+        // If client has not closed yet, wait until it does before closing.
+        if !self.client_closed {
+            loop {
+                if let Ok(heap_data) = self.close_signal_rx.pop() {
+                    // Drop heap data here.
+                    let _ = heap_data;
+                    break;
+                }
+
+                std::thread::sleep(SERVER_WAIT_TIME);
+            }
         }
     }
 
     fn send_msg(&mut self, msg: ServerToClientMsg<D>) {
+        // Do nothing if stream has been closed.
+        if !self.run {
+            return;
+        }
+
         // Block until message can be sent.
         loop {
             if !self.to_client_tx.is_full() {
@@ -213,6 +248,7 @@ impl<D: Decoder> ReadServer<D> {
                 // Drop heap data here.
                 let _ = heap_data;
                 self.run = false;
+                self.client_closed = true;
                 break;
             }
 

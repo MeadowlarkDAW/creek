@@ -5,8 +5,9 @@ pub enum ReadError<FatalError: Error> {
     FatalError(FatalError),
     EndOfFile,
     CacheIndexOutOfRange { index: usize, caches_len: usize },
-    MsgChannelFull,
-    ServerClosed,
+    IOServerChannelFull,
+    IOServerClosed,
+    InvalidBuffer,
     UnknownFatalError,
 }
 
@@ -24,8 +25,13 @@ impl<FatalError: Error> std::fmt::Display for ReadError<FatalError> {
                     index, caches_len
                 )
             }
-            ReadError::MsgChannelFull => write!(f, "The message channel to the server is full."),
-            ReadError::ServerClosed => write!(f, "Server closed unexpectedly"),
+            ReadError::IOServerChannelFull => {
+                write!(f, "The message channel to the IO server is full.")
+            }
+            ReadError::IOServerClosed => write!(f, "Server closed unexpectedly"),
+            ReadError::InvalidBuffer => {
+                write!(f, "Fill buffer does not match internal buffer layout")
+            }
             ReadError::UnknownFatalError => write!(f, "An unkown fatal error occurred"),
         }
     }

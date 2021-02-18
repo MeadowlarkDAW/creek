@@ -1,10 +1,10 @@
 use rtrb::{Consumer, Producer};
 
+use super::data::{DataBlockCacheEntry, DataBlockEntry};
 use super::{
-    ClientToServerMsg, DataBlock, DataBlockCacheEntry, DataBlockEntry, Decoder, FileInfo, HeapData,
-    ReadData, ReadError, ServerToClientMsg,
+    ClientToServerMsg, DataBlock, Decoder, HeapData, ReadData, ReadError, ServerToClientMsg,
 };
-use crate::SERVER_WAIT_TIME;
+use crate::{FileInfo, SERVER_WAIT_TIME};
 
 /// Describes how to search for suitable caches when seeking in a [`ReadDiskStream`].
 ///
@@ -198,7 +198,7 @@ impl<D: Decoder> ReadDiskStream<D> {
         start_frame: usize,
     ) -> Result<bool, ReadError<D::FatalError>> {
         if self.error {
-            return Err(ReadError::ServerClosed);
+            return Err(ReadError::IOServerClosed);
         }
 
         // This check should never fail because it can only be `None` in the destructor.
@@ -216,7 +216,7 @@ impl<D: Decoder> ReadDiskStream<D> {
         {
             // Check that at-least two message slots are open.
             if self.to_server_tx.slots() < 2 + self.num_prefetch_blocks {
-                return Err(ReadError::MsgChannelFull);
+                return Err(ReadError::IOServerChannelFull);
             }
 
             heap.caches[cache_index].wanted_start_frame = start_frame;
@@ -298,12 +298,12 @@ impl<D: Decoder> ReadDiskStream<D> {
         seek_mode: SeekMode,
     ) -> Result<bool, ReadError<D::FatalError>> {
         if self.error {
-            return Err(ReadError::ServerClosed);
+            return Err(ReadError::IOServerClosed);
         }
 
         // Check that enough message slots are open.
         if self.to_server_tx.slots() < 3 + self.num_prefetch_blocks {
-            return Err(ReadError::MsgChannelFull);
+            return Err(ReadError::IOServerChannelFull);
         }
 
         // This check should never fail because it can only be `None` in the destructor.
@@ -437,6 +437,10 @@ impl<D: Decoder> ReadDiskStream<D> {
     pub fn is_ready(&mut self) -> Result<bool, ReadError<D::FatalError>> {
         self.poll()?;
 
+        if self.to_server_tx.is_full() {
+            return Ok(false);
+        }
+
         // This check should never fail because it can only be `None` in the destructor.
         let heap = self.heap_data.as_ref().unwrap();
 
@@ -486,7 +490,77 @@ impl<D: Decoder> ReadDiskStream<D> {
         Ok(())
     }
 
+    /// Blocks the current thread until the given buffer is filled.
+    ///
+    /// NOTE: This should ***never*** be used in a real-time thread.
+    ///
+    /// This will start reading from the stream's current playhead (this can be changed
+    /// beforehand with `ReadDiskStream::seek()`). This is streaming, meaning the next call to
+    /// `fill_buffer_blocking()` or `ReadDiskStream::read()` will pick up from where the previous
+    /// call ended.
+    ///
+    /// ## Returns
+    /// This will return the number of frames that were written to the buffer. This may be less
+    /// than the length of the buffer if the end of the file was reached, so use this as a check
+    /// if the entire buffer was filled or not.
+    ///
+    /// ## Error
+    /// This will return an error if the number of channels in the buffer does not equal the number
+    /// of channels in the stream, if the length of each channel is not the same, or if there was
+    /// an internal error with reading the stream.
+    pub fn fill_buffer_blocking(
+        &mut self,
+        buffer: &mut [Vec<D::T>],
+    ) -> Result<usize, ReadError<D::FatalError>> {
+        if buffer.len() != self.file_info.num_channels {
+            return Err(ReadError::InvalidBuffer);
+        }
+
+        let buffer_len = buffer[0].len();
+
+        // Sanity check that all channels are the same length.
+        for ch in buffer.iter().skip(1) {
+            if ch.len() != buffer_len {
+                return Err(ReadError::InvalidBuffer);
+            }
+        }
+
+        let mut frames_written = 0;
+        while frames_written < buffer_len {
+            let mut reached_end_of_file = false;
+
+            while self.is_ready()? {
+                let read_frames = (buffer_len - frames_written).min(self.block_size);
+
+                let read_data = self.read(read_frames)?;
+                for (i, ch) in buffer.iter_mut().enumerate() {
+                    &mut (*ch)[frames_written..frames_written + read_data.num_frames()]
+                        .copy_from_slice(read_data.read_channel(i));
+                }
+
+                frames_written += read_data.num_frames();
+
+                if read_data.reached_end_of_file() {
+                    reached_end_of_file = true;
+                    break;
+                }
+            }
+
+            if reached_end_of_file {
+                break;
+            }
+
+            std::thread::sleep(SERVER_WAIT_TIME);
+        }
+
+        Ok(frames_written)
+    }
+
     fn poll(&mut self) -> Result<(), ReadError<D::FatalError>> {
+        if self.error {
+            return Err(ReadError::IOServerClosed);
+        }
+
         // Retrieve any data sent from the server.
 
         // This check should never fail because it can only be `None` in the destructor.
@@ -495,7 +569,7 @@ impl<D: Decoder> ReadDiskStream<D> {
         loop {
             // Check that there is at-least one slot open before popping the next message.
             if self.to_server_tx.is_full() {
-                return Err(ReadError::MsgChannelFull);
+                return Err(ReadError::IOServerChannelFull);
             }
 
             if let Ok(msg) = self.from_server_rx.pop() {
@@ -587,7 +661,7 @@ impl<D: Decoder> ReadDiskStream<D> {
     /// will be used instead. This can be retrieved using `ReadDiskStream::block_size()`.
     pub fn read(&mut self, mut frames: usize) -> Result<ReadData<D::T>, ReadError<D::FatalError>> {
         if self.error {
-            return Err(ReadError::ServerClosed);
+            return Err(ReadError::IOServerClosed);
         }
 
         frames = frames.min(self.block_size);
@@ -596,7 +670,7 @@ impl<D: Decoder> ReadDiskStream<D> {
 
         // Check that there is at-least one slot open for when `advance_to_next_block()` is called.
         if self.to_server_tx.is_full() {
-            return Err(ReadError::MsgChannelFull);
+            return Err(ReadError::IOServerChannelFull);
         }
 
         // Check if the end of the file was reached.

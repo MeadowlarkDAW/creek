@@ -2,20 +2,7 @@ use std::path::PathBuf;
 use std::{error::Error, fmt::Debug};
 
 use super::DataBlock;
-
-/// Info about the file.
-#[derive(Clone)]
-pub struct FileInfo<FileParams> {
-    /// The total number of frames in the file.
-    pub num_frames: usize,
-    /// The number of channels in the file.
-    pub num_channels: usize,
-    /// The sample rate of the file (if it exists).
-    pub sample_rate: Option<u32>,
-
-    /// Additional info provided by the decoder.
-    pub params: FileParams,
-}
+use crate::FileInfo;
 
 /// A type that decodes a file in a read stream.
 pub trait Decoder: Sized + 'static {

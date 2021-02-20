@@ -75,7 +75,7 @@ impl<D: Decoder> ReadDiskStream<D> {
     ) -> Self {
         let num_prefetch_blocks = num_cache_blocks + num_look_ahead_blocks;
 
-        let read_buffer = DataBlock::new(file_info.num_channels, block_size);
+        let read_buffer = DataBlock::new(usize::from(file_info.num_channels), block_size);
 
         // Reserve the last two caches as temporary caches.
         let max_num_caches = max_num_caches + 2;
@@ -512,7 +512,7 @@ impl<D: Decoder> ReadDiskStream<D> {
         &mut self,
         buffer: &mut [Vec<D::T>],
     ) -> Result<usize, ReadError<D::FatalError>> {
-        if buffer.len() != self.file_info.num_channels {
+        if buffer.len() != usize::from(self.file_info.num_channels) {
             return Err(ReadError::InvalidBuffer);
         }
 

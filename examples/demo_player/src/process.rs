@@ -128,9 +128,10 @@ impl Process {
             }
 
             let num_frames = read_disk_stream.info().num_frames;
+            let num_channels = usize::from(read_disk_stream.info().num_channels);
 
             // Keep reading data until output buffer is filled.
-            while data.len() >= read_disk_stream.info().num_channels {
+            while data.len() >= num_channels {
                 let read_frames = data.len() / 2;
 
                 let mut playhead = read_disk_stream.playhead();

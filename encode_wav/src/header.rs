@@ -1,125 +1,105 @@
-// Code modified from https://github.com/Fluhzar/WAV/blob/master,
-// which is licensed under the
-//
-// GNU Lesser General Public License v3.0.
-//
-// https://github.com/Fluhzar/WAV/blob/master/LICENSE
+static RIFF_DESC: [u8; 4] = 0x52494646u32.to_be_bytes(); // The letters "RIFF" in ASCII.
+static WAVE_DESC: [u8; 4] = 0x57415645u32.to_be_bytes(); // The letters "WAVE" in ASCII.
+static FMT_DESC: [u8; 4] = 0x666d7420u32.to_be_bytes(); // The letters "fmt " in ASCII.
+static DATA_DESC: [u8; 4] = 0x64617461u32.to_be_bytes(); // The letters "data" in ASCII.
 
-use std::convert::TryFrom;
+use crate::{Format, FormatType};
 
-/// Structure for the `"fmt "` chunk of wave files, specifying key information
-/// about the enclosed data. This struct supports only PCM data, which is to
-/// say there is no extra members for compressed format data.
-#[derive(Debug, Default, Copy, Clone, Hash, PartialEq, Eq)]
 pub struct Header {
-    pub audio_format: u16,
-    pub channel_count: u16,
-    pub sampling_rate: u32,
-    pub bytes_per_second: u32,
-    pub bytes_per_sample: u16,
-    pub bits_per_sample: u16,
+    buffer: Vec<u8>,
+    num_channels: u16,
+    format: Format,
 }
 
 impl Header {
-    /// Creates a new Header object.
-    ///
-    /// ## Note
-    ///
-    /// While the [`read`][0] and [`write`][1] functions only support
-    /// uncompressed PCM for the audio format, the option is given here to
-    /// select any audio format for custom implementations of wave features.
-    ///
-    /// ## Parameters
-    ///
-    /// * `af` - Audio format. 1 for uncompressed PCM data.
-    /// * `cc` - Channel count, the number of channels each sample has. Generally 1 (mono) or 2 (stereo).
-    /// * `r` - Sampling rate (e.g. 44.1kHz, 48kHz, 96kHz, etc.).
-    /// * `bps` - Number of bits in each (sub-channel) sample. Generally 8, 16, or 24.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// let h = wav::Header::new(1, 2, 48_000, 16);
-    /// ```
-    ///
-    /// [0]: crate::read
-    /// [1]: crate::write
-    pub fn new(af: u16, cc: u16, r: u32, bps: u16) -> Header {
-        Header {
-            audio_format: af,
-            channel_count: cc,
-            sampling_rate: r,
-            bytes_per_second: (((bps >> 3) * cc) as u32) * r,
-            bytes_per_sample: ((bps >> 3) * cc) as u16,
-            bits_per_sample: bps,
-        }
-    }
-}
+    pub fn new(num_channels: u16, sample_rate: u32, format: Format) -> Self {
+        let bits_per_sample = format.bits_per_sample();
+        let bytes_per_sample = format.bytes_per_sample();
 
-impl From<Header> for [u8; 16] {
-    fn from(h: Header) -> Self {
-        let mut v: [u8; 16] = [0; 16];
+        let nc = num_channels.to_le_bytes();
+        let sr = sample_rate.to_le_bytes();
+        let bps = bits_per_sample.to_le_bytes();
+        let br =
+            (sample_rate * u32::from(num_channels) * u32::from(bytes_per_sample)).to_le_bytes();
+        let ba = (num_channels * bytes_per_sample).to_le_bytes();
 
-        let b = h.audio_format.to_le_bytes();
-        v[0] = b[0];
-        v[1] = b[1];
-        let b = h.channel_count.to_le_bytes();
-        v[2] = b[0];
-        v[3] = b[1];
-        let b = h.sampling_rate.to_le_bytes();
-        v[4] = b[0];
-        v[5] = b[1];
-        v[6] = b[2];
-        v[7] = b[3];
-        let b = h.bytes_per_second.to_le_bytes();
-        v[8] = b[0];
-        v[9] = b[1];
-        v[10] = b[2];
-        v[11] = b[3];
-        let b = h.bytes_per_sample.to_le_bytes();
-        v[12] = b[0];
-        v[13] = b[1];
-        let b = h.bits_per_sample.to_le_bytes();
-        v[14] = b[0];
-        v[15] = b[1];
-
-        v
-    }
-}
-
-impl From<[u8; 16]> for Header {
-    fn from(v: [u8; 16]) -> Self {
-        let audio_format = u16::from_le_bytes([v[0], v[1]]);
-        let channel_count = u16::from_le_bytes([v[2], v[3]]);
-        let sampling_rate = u32::from_le_bytes([v[4], v[5], v[6], v[7]]);
-        let bytes_per_second = u32::from_le_bytes([v[8], v[9], v[10], v[11]]);
-        let bytes_per_sample = u16::from_le_bytes([v[12], v[13]]);
-        let bits_per_sample = u16::from_le_bytes([v[14], v[15]]);
-
-        Header {
-            audio_format,
-            channel_count,
-            sampling_rate,
-            bytes_per_second,
-            bytes_per_sample,
-            bits_per_sample,
-        }
-    }
-}
-
-impl TryFrom<&[u8]> for Header {
-    type Error = &'static str;
-
-    /// ## Errors
-    ///
-    /// This function will return an error if the given slice is smaller than 16 bytes.
-    fn try_from(v: &[u8]) -> Result<Self, Self::Error> {
-        if v.len() < 16 {
-            Err("Slice is smaller than the minimum-required 16 bytes")
+        let (subchunk1_size, audio_format): (u32, u16) = if format.format_type() == FormatType::Pcm
+        {
+            (16, 1)
         } else {
-            let mut a: [u8; 16] = [0; 16];
-            a.copy_from_slice(&v[0..16]);
-            Ok(Header::from(a))
+            (16, 1) // TODO
+        };
+        let chunk_size = 4 + (8 + subchunk1_size);
+
+        let sc1_size = subchunk1_size.to_le_bytes();
+        let ch_size = chunk_size.to_le_bytes();
+        let af = audio_format.to_le_bytes();
+
+        #[rustfmt::skip]
+        let buffer = vec![
+            // RIFF chunk
+
+            RIFF_DESC[0], RIFF_DESC[1], RIFF_DESC[2], RIFF_DESC[3],  // ChunkID
+            ch_size[0],   ch_size[1],   ch_size[2],   ch_size[3],    // ChunkSize
+            WAVE_DESC[0], WAVE_DESC[1], WAVE_DESC[2], WAVE_DESC[3],  // Format
+
+            // Format subchunk
+
+            FMT_DESC[0],  FMT_DESC[1],  FMT_DESC[2],  FMT_DESC[3],   // Subchunk1ID
+            sc1_size[0],  sc1_size[1],  sc1_size[2],  sc1_size[3],   // Subchunk1Size
+            af[0],        af[1],                                     // AudioFormat
+            nc[0],        nc[1],                                     // NumChannels
+            sr[0],        sr[1],        sr[2],        sr[3],         // SampleRate
+            br[0],        br[1],        br[2],        br[3],         // ByteRate
+            ba[0],        ba[1],                                     // BlockAlign
+            bps[0],       bps[1],                                    // BitsPerSample
+
+            // Data subchunk
+
+            DATA_DESC[0], DATA_DESC[1], DATA_DESC[2], DATA_DESC[3],  // Subchunk2ID
+            0,            0,            0,            0,             // Subchunk2Size
+        ];
+
+        Self {
+            buffer,
+            num_channels,
+            format,
+        }
+    }
+
+    pub fn set_num_frames(&mut self, num_frames: u32) {
+        let num_bytes =
+            num_frames * u32::from(self.num_channels) * u32::from(self.format.bytes_per_sample());
+
+        if self.format.format_type() == FormatType::Pcm {
+            let chunk_size = 36 + num_bytes;
+
+            let ch_size = chunk_size.to_le_bytes();
+            let da_size = num_bytes.to_le_bytes();
+
+            self.buffer[4] = ch_size[0];
+            self.buffer[5] = ch_size[1];
+            self.buffer[6] = ch_size[2];
+            self.buffer[7] = ch_size[3];
+
+            self.buffer[40] = da_size[0];
+            self.buffer[41] = da_size[1];
+            self.buffer[42] = da_size[2];
+            self.buffer[43] = da_size[3];
+        } else {
+            // TODO
+        }
+    }
+
+    pub fn buffer(&self) -> &[u8] {
+        &self.buffer
+    }
+
+    pub fn max_data_bytes(&self) -> u32 {
+        if self.format.format_type() == FormatType::Pcm {
+            std::u32::MAX - 36
+        } else {
+            std::u32::MAX - 36 // TODO
         }
     }
 }

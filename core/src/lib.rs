@@ -16,7 +16,7 @@ pub struct FileInfo<FileParams> {
     /// The total number of frames in the file.
     pub num_frames: usize,
     /// The number of channels in the file.
-    pub num_channels: usize,
+    pub num_channels: u16,
     /// The sample rate of the file (if it exists).
     pub sample_rate: Option<f64>,
 

@@ -31,7 +31,10 @@ impl<E: Encoder> WriteDiskStream<E> {
     ) -> Self {
         let mut block_pool: Vec<WriteBlock<E::T>> = Vec::with_capacity(num_write_blocks);
         for _ in 0..num_write_blocks - 2 {
-            block_pool.push(WriteBlock::new(file_info.num_channels, block_size));
+            block_pool.push(WriteBlock::new(
+                usize::from(file_info.num_channels),
+                block_size,
+            ));
         }
 
         Self {
@@ -41,8 +44,14 @@ impl<E: Encoder> WriteDiskStream<E> {
 
             heap_data: Some(HeapData {
                 block_pool,
-                current_block: Some(WriteBlock::new(file_info.num_channels, block_size)),
-                next_block: Some(WriteBlock::new(file_info.num_channels, block_size)),
+                current_block: Some(WriteBlock::new(
+                    usize::from(file_info.num_channels),
+                    block_size,
+                )),
+                next_block: Some(WriteBlock::new(
+                    usize::from(file_info.num_channels),
+                    block_size,
+                )),
             }),
 
             block_size,
@@ -99,7 +108,7 @@ impl<E: Encoder> WriteDiskStream<E> {
         }
 
         // Check that the buffer is valid.
-        if buffer.len() != self.file_info.num_channels {
+        if buffer.len() != usize::from(self.file_info.num_channels) {
             return Err(WriteError::InvalidBuffer);
         }
         // Check buffer sizes.

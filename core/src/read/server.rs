@@ -53,7 +53,7 @@ impl<D: Decoder> ReadServer<D> {
                         decoder,
                         block_pool: Vec::new(),
                         cache_pool: Vec::new(),
-                        num_channels,
+                        num_channels: usize::from(num_channels),
                         num_prefetch_blocks,
                         block_size,
                         run: true,

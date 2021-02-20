@@ -136,7 +136,7 @@ impl Decoder for SymphoniaDecoder {
         let file_info = FileInfo {
             params,
             num_frames,
-            num_channels,
+            num_channels: num_channels as u16,
             sample_rate: sample_rate.map(|s| s as f64),
         };
 

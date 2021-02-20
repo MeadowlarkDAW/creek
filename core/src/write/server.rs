@@ -24,10 +24,9 @@ pub(crate) struct WriteServer<E: Encoder> {
 impl<E: Encoder> WriteServer<E> {
     pub fn new(
         file: PathBuf,
-        overwrite_existing_file: bool,
         num_write_blocks: usize,
         block_size: usize,
-        num_channels: usize,
+        num_channels: u16,
         sample_rate: f64,
         to_client_tx: Producer<ServerToClientMsg<E>>,
         from_client_rx: Consumer<ClientToServerMsg<E>>,
@@ -43,7 +42,6 @@ impl<E: Encoder> WriteServer<E> {
                 num_channels,
                 sample_rate,
                 block_size,
-                overwrite_existing_file,
                 num_write_blocks,
                 additional_opts,
             ) {

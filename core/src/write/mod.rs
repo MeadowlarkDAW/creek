@@ -74,15 +74,11 @@ impl<E: Encoder> Default for WriteStreamOptions<E> {
 /// * `file` - The path to the file to open.
 /// * `num_channels` - The number of channels in the file.
 /// * `sample_rate` - The sample rate of the file.
-/// * `overwrite_existing_file` - If there already is exists a file with the same name,
-/// then this will choose to either clear the file and start over (true), or to start
-/// appending data to the end of the file (false).
 /// * `stream_opts` - Additional stream options.
 pub fn open_write<E: Encoder, P: Into<PathBuf>>(
     file: P,
     num_channels: u16,
     sample_rate: f64,
-    overwrite_existing_file: bool,
     stream_opts: WriteStreamOptions<E>,
 ) -> Result<WriteDiskStream<E>, E::OpenError> {
     assert_ne!(num_channels, 0);
@@ -108,10 +104,9 @@ pub fn open_write<E: Encoder, P: Into<PathBuf>>(
 
     match WriteServer::new(
         file,
-        overwrite_existing_file,
         stream_opts.num_write_blocks,
         stream_opts.block_size,
-        num_channels as usize,
+        num_channels,
         sample_rate,
         to_client_tx,
         from_client_rx,

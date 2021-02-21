@@ -4,7 +4,7 @@ use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::{FileInfo, SERVER_WAIT_TIME};
 
-use super::{ClientToServerMsg, Encoder, HeapData, ServerToClientMsg};
+use super::{ClientToServerMsg, Encoder, HeapData, ServerToClientMsg, WriteStatus};
 
 pub(crate) struct WriteServer<E: Encoder> {
     to_client_tx: Producer<ServerToClientMsg<E>>,
@@ -104,10 +104,25 @@ impl<E: Encoder> WriteServer<E> {
                             let write_res = unsafe { self.encoder.encode(&block) };
 
                             match write_res {
-                                Ok(()) => {
-                                    // Clear and send block to be re-used by client.
-                                    block.written_frames = 0;
-                                    self.send_msg(ServerToClientMsg::NewWriteBlock { block });
+                                Ok(status) => {
+                                    match status {
+                                        WriteStatus::Ok => {
+                                            // Clear and send block to be re-used by client.
+                                            block.written_frames = 0;
+                                            self.send_msg(ServerToClientMsg::NewWriteBlock {
+                                                block,
+                                            });
+                                        }
+                                        WriteStatus::ReachedMaxSize { max_size_bytes } => {
+                                            self.send_msg(ServerToClientMsg::ReachedMaxSize {
+                                                max_size_bytes,
+                                            });
+                                            self.file_finished = true;
+                                            self.run = false;
+                                            do_sleep = false;
+                                            break;
+                                        }
+                                    }
                                 }
                                 Err(e) => {
                                     self.send_msg(ServerToClientMsg::FatalError(e));

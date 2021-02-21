@@ -5,6 +5,12 @@ use std::path::PathBuf;
 use super::WriteBlock;
 use crate::FileInfo;
 
+#[derive(Debug, Clone, Copy)]
+pub enum WriteStatus {
+    Ok,
+    ReachedMaxSize { max_size_bytes: usize },
+}
+
 /// A type that encodes a file in a write stream.
 pub trait Encoder: Sized + 'static {
     /// The data type of a single sample. (i.e. `f32`)
@@ -47,7 +53,10 @@ pub trait Encoder: Sized + 'static {
         additional_opts: Self::AdditionalOpts,
     ) -> Result<(Self, FileInfo<Self::FileParams>), Self::OpenError>;
 
-    unsafe fn encode(&mut self, write_block: &WriteBlock<Self::T>) -> Result<(), Self::FatalError>;
+    unsafe fn encode(
+        &mut self,
+        write_block: &WriteBlock<Self::T>,
+    ) -> Result<WriteStatus, Self::FatalError>;
 
     fn finish_file(&mut self) -> Result<(), Self::FatalError>;
 

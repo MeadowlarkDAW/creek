@@ -6,7 +6,9 @@ mod write;
 pub use read::{
     open_read, DataBlock, Decoder, ReadDiskStream, ReadError, ReadStreamOptions, SeekMode,
 };
-pub use write::{open_write, Encoder, WriteBlock, WriteDiskStream, WriteError, WriteStreamOptions};
+pub use write::{
+    open_write, Encoder, WriteBlock, WriteDiskStream, WriteError, WriteStatus, WriteStreamOptions,
+};
 
 const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);
 

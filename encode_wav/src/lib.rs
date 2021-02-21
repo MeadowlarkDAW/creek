@@ -4,7 +4,7 @@ use std::{
     io::{Seek, SeekFrom, Write},
 };
 
-use rt_audio_disk_stream_core::{Encoder, FileInfo, WriteBlock};
+use rt_audio_disk_stream_core::{Encoder, FileInfo, WriteBlock, WriteStatus};
 
 mod error;
 mod header;
@@ -68,7 +68,7 @@ pub struct Params {
     format: Format,
 }
 
-pub struct BWavFileEncoder<B: BitWriter + 'static> {
+pub struct WavEncoder<B: BitWriter + 'static> {
     interleave_buf: Vec<B::T>,
     file: Option<File>,
     header: Header,
@@ -81,7 +81,7 @@ pub struct BWavFileEncoder<B: BitWriter + 'static> {
     bit_writer: B,
 }
 
-impl<B: BitWriter + 'static> Encoder for BWavFileEncoder<B> {
+impl<B: BitWriter + 'static> Encoder for WavEncoder<B> {
     type T = B::T;
     type AdditionalOpts = ();
     type FileParams = Params;
@@ -142,7 +142,10 @@ impl<B: BitWriter + 'static> Encoder for BWavFileEncoder<B> {
         ))
     }
 
-    unsafe fn encode(&mut self, write_block: &WriteBlock<Self::T>) -> Result<(), Self::FatalError> {
+    unsafe fn encode(
+        &mut self,
+        write_block: &WriteBlock<Self::T>,
+    ) -> Result<WriteStatus, Self::FatalError> {
         if let Some(mut file) = self.file.take() {
             let written_frames = write_block.written_frames();
 
@@ -196,13 +199,15 @@ impl<B: BitWriter + 'static> Encoder for BWavFileEncoder<B> {
                 // Drop file here.
                 let _ = file;
 
-                return Err(FatalError::ReachedMaxSize);
+                return Ok(WriteStatus::ReachedMaxSize {
+                    max_size_bytes: self.max_file_bytes as usize,
+                });
             }
 
             self.file = Some(file);
         }
 
-        Ok(())
+        Ok(WriteStatus::Ok)
     }
 
     fn finish_file(&mut self) -> Result<(), Self::FatalError> {

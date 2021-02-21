@@ -10,7 +10,7 @@ mod write_stream;
 pub mod error;
 
 pub use data::WriteBlock;
-pub use encoder::Encoder;
+pub use encoder::{Encoder, WriteStatus};
 pub use error::WriteError;
 pub use write_stream::WriteDiskStream;
 
@@ -20,6 +20,7 @@ use server::WriteServer;
 pub(crate) enum ServerToClientMsg<E: Encoder> {
     NewWriteBlock { block: WriteBlock<E::T> },
     Finished,
+    ReachedMaxSize { max_size_bytes: usize },
     FatalError(E::FatalError),
 }
 

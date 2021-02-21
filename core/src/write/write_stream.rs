@@ -199,6 +199,8 @@ impl<E: Encoder> WriteDiskStream<E> {
                         heap.next_block = Some(next_block);
                     }
                 }
+
+                self.file_info.num_frames += buffer_len;
             } else {
                 heap.current_block = Some(current_block);
                 return Err(WriteError::Underflow);
@@ -282,6 +284,7 @@ impl<E: Encoder> WriteDiskStream<E> {
         }
 
         self.restart_count += 1;
+        self.file_info.num_frames = 0;
 
         Ok(())
     }
@@ -312,6 +315,11 @@ impl<E: Encoder> WriteDiskStream<E> {
                 }
                 ServerToClientMsg::Finished => {
                     self.finish_complete = true;
+                }
+                ServerToClientMsg::ReachedMaxSize { max_size_bytes } => {
+                    self.finished = true;
+                    self.finish_complete = true;
+                    return Err(WriteError::ReachedMaxSize { max_size_bytes });
                 }
                 ServerToClientMsg::FatalError(e) => {
                     self.error = true;

@@ -11,7 +11,7 @@ pub mod error;
 
 pub use data::{DataBlock, ReadData};
 pub use decoder::Decoder;
-pub use error::ReadError;
+pub use error::{FatalReadError, ReadError};
 pub use read_stream::{ReadDiskStream, SeekMode};
 
 use data::{DataBlockCache, HeapData};

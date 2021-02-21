@@ -1,6 +1,9 @@
 use rtrb::{Consumer, Producer};
 
-use super::{ClientToServerMsg, Encoder, HeapData, ServerToClientMsg, WriteBlock, WriteError};
+use super::{
+    ClientToServerMsg, Encoder, FatalWriteError, HeapData, ServerToClientMsg, WriteBlock,
+    WriteError,
+};
 use crate::{FileInfo, SERVER_WAIT_TIME};
 
 /// A realtime-safe disk-streaming writer of audio files.
@@ -17,7 +20,9 @@ pub struct WriteDiskStream<E: Encoder> {
     restart_count: usize,
     finished: bool,
     finish_complete: bool,
-    error: bool,
+    fatal_error: bool,
+
+    num_files: u32,
 }
 
 impl<E: Encoder> WriteDiskStream<E> {
@@ -60,17 +65,15 @@ impl<E: Encoder> WriteDiskStream<E> {
             restart_count: 0,
             finished: false,
             finish_complete: false,
-            error: false,
+            fatal_error: false,
+
+            num_files: 1,
         }
     }
 
     pub fn is_ready(&mut self) -> Result<bool, WriteError<E::FatalError>> {
-        if self.error {
-            return Err(WriteError::IOServerClosed);
-        }
-
-        if self.finished {
-            return Err(WriteError::FileFinished);
+        if self.fatal_error || self.finished {
+            return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
         }
 
         self.poll()?;
@@ -99,12 +102,8 @@ impl<E: Encoder> WriteDiskStream<E> {
     }
 
     pub fn write(&mut self, buffer: &mut [Vec<E::T>]) -> Result<(), WriteError<E::FatalError>> {
-        if self.error {
-            return Err(WriteError::IOServerClosed);
-        }
-
-        if self.finished {
-            return Err(WriteError::FileFinished);
+        if self.fatal_error || self.finished {
+            return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
         }
 
         // Check that the buffer is valid.
@@ -213,12 +212,8 @@ impl<E: Encoder> WriteDiskStream<E> {
     }
 
     pub fn finish_and_close(&mut self) -> Result<(), WriteError<E::FatalError>> {
-        if self.error {
-            return Err(WriteError::IOServerClosed);
-        }
-
-        if self.finished {
-            return Err(WriteError::FileFinished);
+        if self.fatal_error || self.finished {
+            return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
         }
 
         // Check that there is at-least one slot open.
@@ -236,12 +231,8 @@ impl<E: Encoder> WriteDiskStream<E> {
     }
 
     pub fn discard_and_close(&mut self) -> Result<(), WriteError<E::FatalError>> {
-        if self.error {
-            return Err(WriteError::IOServerClosed);
-        }
-
-        if self.finished {
-            return Err(WriteError::FileFinished);
+        if self.fatal_error || self.finished {
+            return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
         }
 
         // Check that there is at-least one slot open.
@@ -254,17 +245,14 @@ impl<E: Encoder> WriteDiskStream<E> {
         let _ = self.to_server_tx.push(ClientToServerMsg::DiscardFile);
 
         self.finished = true;
+        self.num_files = 0;
 
         Ok(())
     }
 
     pub fn discard_and_restart(&mut self) -> Result<(), WriteError<E::FatalError>> {
-        if self.error {
-            return Err(WriteError::IOServerClosed);
-        }
-
-        if self.finished {
-            return Err(WriteError::FileFinished);
+        if self.fatal_error || self.finished {
+            return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
         }
 
         // Check that there is at-least one slot open.
@@ -285,13 +273,14 @@ impl<E: Encoder> WriteDiskStream<E> {
 
         self.restart_count += 1;
         self.file_info.num_frames = 0;
+        self.num_files = 1;
 
         Ok(())
     }
 
     fn poll(&mut self) -> Result<(), WriteError<E::FatalError>> {
-        if self.error {
-            return Err(WriteError::IOServerClosed);
+        if self.fatal_error {
+            return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
         }
 
         // Retrieve any data sent from the server.
@@ -316,14 +305,12 @@ impl<E: Encoder> WriteDiskStream<E> {
                 ServerToClientMsg::Finished => {
                     self.finish_complete = true;
                 }
-                ServerToClientMsg::ReachedMaxSize { max_size_bytes } => {
-                    self.finished = true;
-                    self.finish_complete = true;
-                    return Err(WriteError::ReachedMaxSize { max_size_bytes });
+                ServerToClientMsg::ReachedMaxSize { num_files } => {
+                    self.num_files = num_files;
                 }
                 ServerToClientMsg::FatalError(e) => {
-                    self.error = true;
-                    return Err(WriteError::FatalError(e));
+                    self.fatal_error = true;
+                    return Err(WriteError::FatalError(FatalWriteError::EncoderError(e)));
                 }
             }
         }
@@ -333,6 +320,10 @@ impl<E: Encoder> WriteDiskStream<E> {
 
     pub fn finish_complete(&self) -> bool {
         self.finish_complete
+    }
+
+    pub fn num_files(&self) -> u32 {
+        self.num_files
     }
 }
 

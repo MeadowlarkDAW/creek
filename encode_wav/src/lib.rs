@@ -4,7 +4,7 @@ use std::{
     io::{Seek, SeekFrom, Write},
 };
 
-use rt_audio_disk_stream_core::{Encoder, FileInfo, WriteBlock, WriteStatus};
+use rt_audio_disk_stream_core::{write, Encoder, FileInfo, WriteBlock, WriteStatus};
 
 mod error;
 mod header;
@@ -78,6 +78,7 @@ pub struct WavEncoder<B: BitWriter + 'static> {
     max_file_bytes: u64,
     max_block_bytes: u64,
     num_channels: usize,
+    num_files: u32,
     bit_writer: B,
 }
 
@@ -131,6 +132,7 @@ impl<B: BitWriter + 'static> Encoder for WavEncoder<B> {
                 max_file_bytes,
                 max_block_bytes: block_size as u64 * bytes_per_frame,
                 num_channels: usize::from(num_channels),
+                num_files: 1,
                 bit_writer: B::new(block_size, num_channels),
             },
             FileInfo {
@@ -146,6 +148,8 @@ impl<B: BitWriter + 'static> Encoder for WavEncoder<B> {
         &mut self,
         write_block: &WriteBlock<Self::T>,
     ) -> Result<WriteStatus, Self::FatalError> {
+        let mut status = WriteStatus::Ok;
+
         if let Some(mut file) = self.file.take() {
             let written_frames = write_block.written_frames();
 
@@ -196,18 +200,46 @@ impl<B: BitWriter + 'static> Encoder for WavEncoder<B> {
 
             // Make sure the number of written bytes does not exceed 4GB.
             if bytes_written + self.max_block_bytes >= self.max_file_bytes {
-                // Drop file here.
+                // When it does, create a new file to hold more data.
+
+                // Drop current file here.
                 let _ = file;
 
-                return Ok(WriteStatus::ReachedMaxSize {
-                    max_size_bytes: self.max_file_bytes as usize,
-                });
-            }
+                self.num_files += 1;
 
-            self.file = Some(file);
+                let mut file_name = self
+                    .path
+                    .file_name()
+                    .ok_or_else(|| FatalError::CouldNotGetFileName)?
+                    .to_os_string();
+                file_name.push(write::num_files_to_file_name_extension(self.num_files));
+                let mut new_file_path = self.path.clone();
+                new_file_path.set_file_name(file_name);
+
+                // Create new file.
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .open(new_file_path)?;
+
+                self.frames_written = 0;
+                self.header.set_num_frames(0);
+
+                file.seek(SeekFrom::Start(0))?;
+                file.write_all(self.header.buffer())?;
+                file.flush()?;
+
+                status = WriteStatus::ReachedMaxSize {
+                    num_files: self.num_files,
+                };
+
+                self.file = Some(file);
+            } else {
+                self.file = Some(file);
+            }
         }
 
-        Ok(WriteStatus::Ok)
+        Ok(status)
     }
 
     fn finish_file(&mut self) -> Result<(), Self::FatalError> {
@@ -220,6 +252,8 @@ impl<B: BitWriter + 'static> Encoder for WavEncoder<B> {
 
             // Drop file here.
             let _ = file;
+
+            self.num_files = 0;
         }
 
         Ok(())
@@ -231,21 +265,72 @@ impl<B: BitWriter + 'static> Encoder for WavEncoder<B> {
             let _ = file;
 
             std::fs::remove_file(self.path.clone())?;
+
+            // Delete any previously created files.
+            if self.num_files > 1 {
+                for i in 2..(self.num_files + 1) {
+                    let mut file_name = self
+                        .path
+                        .file_name()
+                        .ok_or_else(|| FatalError::CouldNotGetFileName)?
+                        .to_os_string();
+                    file_name.push(write::num_files_to_file_name_extension(i));
+                    let mut new_file_path = self.path.clone();
+                    new_file_path.set_file_name(file_name);
+
+                    std::fs::remove_file(new_file_path)?;
+                }
+            }
+
+            self.num_files = 0;
         }
 
         Ok(())
     }
 
     fn discard_and_restart(&mut self) -> Result<(), Self::FatalError> {
-        if let Some(file) = &mut self.file {
-            file.set_len(0)?;
-
+        if let Some(mut file) = self.file.take() {
             self.frames_written = 0;
             self.header.set_num_frames(0);
 
-            file.seek(SeekFrom::Start(0))?;
-            file.write_all(self.header.buffer())?;
-            file.flush()?;
+            if self.num_files == 1 {
+                file.set_len(0)?;
+                file.seek(SeekFrom::Start(0))?;
+                file.write_all(self.header.buffer())?;
+                file.flush()?;
+
+                self.file = Some(file);
+            } else {
+                // Drop the old file here.
+                let _ = file;
+
+                // Delete any previously created files.
+                for i in 2..(self.num_files + 1) {
+                    let mut file_name = self
+                        .path
+                        .file_name()
+                        .ok_or_else(|| FatalError::CouldNotGetFileName)?
+                        .to_os_string();
+                    file_name.push(write::num_files_to_file_name_extension(i));
+                    let mut new_file_path = self.path.clone();
+                    new_file_path.set_file_name(file_name);
+
+                    std::fs::remove_file(new_file_path)?;
+                }
+
+                // Re-create the original file and start over.
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .open(self.path.clone())?;
+                file.seek(SeekFrom::Start(0))?;
+                file.write_all(self.header.buffer())?;
+                file.flush()?;
+
+                self.file = Some(file);
+            }
+
+            self.num_files = 1;
         }
 
         Ok(())

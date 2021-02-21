@@ -38,6 +38,7 @@ impl From<io::Error> for OpenError {
 pub enum FatalError {
     Io(io::Error),
     ReachedMaxSize,
+    CouldNotGetFileName,
 }
 
 impl std::error::Error for FatalError {}
@@ -47,6 +48,9 @@ impl std::fmt::Display for FatalError {
         match self {
             FatalError::Io(e) => write!(f, "IO error: {:?}", e),
             FatalError::ReachedMaxSize => write!(f, "Reached maximum WAVE file size of 4GB"),
+            FatalError::CouldNotGetFileName => {
+                write!(f, "There was an error reading the name of the file")
+            }
         }
     }
 }

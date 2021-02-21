@@ -2,7 +2,8 @@ use rtrb::{Consumer, Producer};
 
 use super::data::{DataBlockCacheEntry, DataBlockEntry};
 use super::{
-    ClientToServerMsg, DataBlock, Decoder, HeapData, ReadData, ReadError, ServerToClientMsg,
+    ClientToServerMsg, DataBlock, Decoder, FatalReadError, HeapData, ReadData, ReadError,
+    ServerToClientMsg,
 };
 use crate::{FileInfo, SERVER_WAIT_TIME};
 
@@ -58,7 +59,7 @@ pub struct ReadDiskStream<D: Decoder> {
     block_size: usize,
 
     file_info: FileInfo<D::FileParams>,
-    error: bool,
+    fatal_error: bool,
 }
 
 impl<D: Decoder> ReadDiskStream<D> {
@@ -131,7 +132,7 @@ impl<D: Decoder> ReadDiskStream<D> {
             block_size,
 
             file_info,
-            error: false,
+            fatal_error: false,
         }
     }
 
@@ -197,8 +198,8 @@ impl<D: Decoder> ReadDiskStream<D> {
         cache_index: usize,
         start_frame: usize,
     ) -> Result<bool, ReadError<D::FatalError>> {
-        if self.error {
-            return Err(ReadError::IOServerClosed);
+        if self.fatal_error {
+            return Err(ReadError::FatalError(FatalReadError::StreamClosed));
         }
 
         // This check should never fail because it can only be `None` in the destructor.
@@ -207,7 +208,7 @@ impl<D: Decoder> ReadDiskStream<D> {
         if cache_index >= heap.caches.len() - 2 {
             return Err(ReadError::CacheIndexOutOfRange {
                 index: cache_index,
-                caches_len: heap.caches.len() - 2,
+                num_caches: heap.caches.len() - 2,
             });
         }
 
@@ -297,8 +298,8 @@ impl<D: Decoder> ReadDiskStream<D> {
         frame: usize,
         seek_mode: SeekMode,
     ) -> Result<bool, ReadError<D::FatalError>> {
-        if self.error {
-            return Err(ReadError::IOServerClosed);
+        if self.fatal_error {
+            return Err(ReadError::FatalError(FatalReadError::StreamClosed));
         }
 
         // Check that enough message slots are open.
@@ -557,8 +558,8 @@ impl<D: Decoder> ReadDiskStream<D> {
     }
 
     fn poll(&mut self) -> Result<(), ReadError<D::FatalError>> {
-        if self.error {
-            return Err(ReadError::IOServerClosed);
+        if self.fatal_error {
+            return Err(ReadError::FatalError(FatalReadError::StreamClosed));
         }
 
         // Retrieve any data sent from the server.
@@ -633,8 +634,8 @@ impl<D: Decoder> ReadDiskStream<D> {
                         }
                     }
                     ServerToClientMsg::FatalError(e) => {
-                        self.error = true;
-                        return Err(ReadError::FatalError(e));
+                        self.fatal_error = true;
+                        return Err(ReadError::FatalError(FatalReadError::DecoderError(e)));
                     }
                 }
             } else {
@@ -660,8 +661,8 @@ impl<D: Decoder> ReadDiskStream<D> {
     /// NOTE: If the number of `frames` exceeds the block size of the decoder, then that block size
     /// will be used instead. This can be retrieved using `ReadDiskStream::block_size()`.
     pub fn read(&mut self, mut frames: usize) -> Result<ReadData<D::T>, ReadError<D::FatalError>> {
-        if self.error {
-            return Err(ReadError::IOServerClosed);
+        if self.fatal_error {
+            return Err(ReadError::FatalError(FatalReadError::StreamClosed));
         }
 
         frames = frames.min(self.block_size);

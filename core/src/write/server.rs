@@ -106,23 +106,17 @@ impl<E: Encoder> WriteServer<E> {
                             match write_res {
                                 Ok(status) => {
                                     match status {
-                                        WriteStatus::Ok => {
-                                            // Clear and send block to be re-used by client.
-                                            block.written_frames = 0;
-                                            self.send_msg(ServerToClientMsg::NewWriteBlock {
-                                                block,
-                                            });
-                                        }
-                                        WriteStatus::ReachedMaxSize { max_size_bytes } => {
+                                        WriteStatus::ReachedMaxSize { num_files } => {
                                             self.send_msg(ServerToClientMsg::ReachedMaxSize {
-                                                max_size_bytes,
+                                                num_files,
                                             });
-                                            self.file_finished = true;
-                                            self.run = false;
-                                            do_sleep = false;
-                                            break;
                                         }
+                                        _ => {}
                                     }
+
+                                    // Clear and send block to be re-used by client.
+                                    block.written_frames = 0;
+                                    self.send_msg(ServerToClientMsg::NewWriteBlock { block });
                                 }
                                 Err(e) => {
                                     self.send_msg(ServerToClientMsg::FatalError(e));

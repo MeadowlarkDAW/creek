@@ -1,10 +1,11 @@
 use std::time;
 
-mod read;
-mod write;
+pub mod read;
+pub mod write;
 
 pub use read::{
-    open_read, DataBlock, Decoder, ReadDiskStream, ReadError, ReadStreamOptions, SeekMode,
+    open_read, DataBlock, Decoder, FatalReadError, ReadDiskStream, ReadError, ReadStreamOptions,
+    SeekMode,
 };
 pub use write::{
     open_write, Encoder, WriteBlock, WriteDiskStream, WriteError, WriteStatus, WriteStreamOptions,

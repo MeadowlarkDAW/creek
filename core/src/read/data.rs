@@ -65,18 +65,27 @@ impl<'a, T: Copy + Clone + Default + Send> ReadData<'a, T> {
         }
     }
 
+    /// Read a single channel of samples.
+    ///
+    /// Use `ReadData::num_channels()` to get the number of available channels.
+    ///
+    /// The length of this data will be equal to `ReadData::num_frames()`.
     pub fn read_channel(&self, channel: usize) -> &[T] {
         &self.data.block[channel][0..self.len]
     }
 
+    /// Return the number of channels in this data.
     pub fn num_channels(&self) -> usize {
         self.data.block.len()
     }
 
+    /// Return the number of samples in a single channel of data.
     pub fn num_frames(&self) -> usize {
         self.len
     }
 
+    /// This returns (true) if the last frame in this data is the end of the file,
+    /// (false) otherwise.
     pub fn reached_end_of_file(&self) -> bool {
         self.reached_end_of_file
     }

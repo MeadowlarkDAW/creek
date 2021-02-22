@@ -71,6 +71,12 @@ impl<E: Encoder> WriteDiskStream<E> {
         }
     }
 
+    /// Returns true if the stream is ready for writing, false otherwise.
+    ///
+    /// This is realtime-safe.
+    ///
+    /// In theory this should never return false, but this function is here
+    /// as a sanity-check.
     pub fn is_ready(&mut self) -> Result<bool, WriteError<E::FatalError>> {
         if self.fatal_error || self.finished {
             return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
@@ -88,7 +94,10 @@ impl<E: Encoder> WriteDiskStream<E> {
 
     /// Blocks the current thread until the stream is ready to be written to.
     ///
-    /// NOTE: This should ***never*** be used in a real-time thread..
+    /// NOTE: This is ***note*** realtime-safe.
+    ///
+    /// In theory you shouldn't need this, but this function is here
+    /// as a sanity-check.
     pub fn block_until_ready(&mut self) -> Result<(), WriteError<E::FatalError>> {
         loop {
             if self.is_ready()? {
@@ -101,6 +110,16 @@ impl<E: Encoder> WriteDiskStream<E> {
         Ok(())
     }
 
+    /// Write the buffer of frames into the file.
+    ///
+    /// This is realtime-safe.
+    ///
+    /// Some codecs (like WAV) have a maximum size of 4GB. If more than 4GB of data is
+    /// pushed to this stream, then a new file will automatically be created to hold
+    /// more data. The name of this file will be the same name as the main file with
+    /// "_XXX" appended to the end (i.e. "_001", "_002", etc.).
+    /// `WriteDiskStream::num_files()` can be used to get the total numbers of files that
+    /// have been created.
     pub fn write(&mut self, buffer: &mut [Vec<E::T>]) -> Result<(), WriteError<E::FatalError>> {
         if self.fatal_error || self.finished {
             return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
@@ -211,6 +230,12 @@ impl<E: Encoder> WriteDiskStream<E> {
         Ok(())
     }
 
+    /// Finish the file and close the stream. The stream cannot be used after calling this.
+    ///
+    /// This is realtime-safe.
+    ///
+    /// `WriteDiskStream.finish_complete()` will return true once the file has been
+    /// successfully finished and closed.
     pub fn finish_and_close(&mut self) -> Result<(), WriteError<E::FatalError>> {
         if self.fatal_error || self.finished {
             return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
@@ -230,6 +255,10 @@ impl<E: Encoder> WriteDiskStream<E> {
         Ok(())
     }
 
+    /// Delete all files created by this stream and close the stream. The stream cannot
+    /// be used after calling this.
+    ///
+    /// This is realtime-safe.
     pub fn discard_and_close(&mut self) -> Result<(), WriteError<E::FatalError>> {
         if self.fatal_error || self.finished {
             return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
@@ -250,6 +279,10 @@ impl<E: Encoder> WriteDiskStream<E> {
         Ok(())
     }
 
+    /// Delete all files created by this stream and start over. This stream can
+    /// continue to be written to after calling this.
+    ///
+    /// This is realtime-safe.
     pub fn discard_and_restart(&mut self) -> Result<(), WriteError<E::FatalError>> {
         if self.fatal_error || self.finished {
             return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
@@ -318,10 +351,25 @@ impl<E: Encoder> WriteDiskStream<E> {
         Ok(())
     }
 
+    /// Returns true when the file has been successfully finished and closed, false
+    /// otherwise.
+    ///
+    /// This is realtime-safe.
     pub fn finish_complete(&self) -> bool {
         self.finish_complete
     }
 
+    /// Return info about the file.
+    ///
+    /// This is realtime-safe.
+    pub fn info(&self) -> &FileInfo<E::FileParams> {
+        &self.file_info
+    }
+
+    /// Returns the total number of files created by this stream. This can be more
+    /// than one depending on the codec and the number of written frames.
+    ///
+    /// This is realtime-safe.
     pub fn num_files(&self) -> u32 {
         self.num_files
     }

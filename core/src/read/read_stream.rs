@@ -137,6 +137,8 @@ impl<D: Decoder> ReadDiskStream<D> {
     }
 
     /// Return the total number of caches available in this stream.
+    ///
+    /// This is realtime-safe.
     pub fn num_caches(&self) -> usize {
         // This check should never fail because it can only be `None` in the destructor.
         if let Some(heap) = &self.heap_data {
@@ -148,6 +150,8 @@ impl<D: Decoder> ReadDiskStream<D> {
 
     /// Returns whether a cache can be moved seamlessly without silencing current playback (true)
     /// or not (false).
+    ///
+    /// This is realtime-safe.
     ///
     /// If the position of a cache is changed while the playback stream is currently relying on it,
     /// then it will attempt to store the cache in a temporary buffer to allow playback to resume
@@ -176,6 +180,8 @@ impl<D: Decoder> ReadDiskStream<D> {
     }
 
     /// Request to cache a new area in the file.
+    ///
+    /// This is realtime-safe.
     ///
     /// * `cache_index` - The index of the cache to use. Use `ReadDiskStream::num_caches()` to see
     /// how many caches have been assigned to this stream.
@@ -284,6 +290,8 @@ impl<D: Decoder> ReadDiskStream<D> {
     }
 
     /// Request to seek playback to a new position in the file.
+    ///
+    /// This is realtime-safe.
     ///
     /// * `frame` - The position in the file to seek to. If this lies outside of the end of
     /// the file, then playback will return silence.
@@ -433,6 +441,8 @@ impl<D: Decoder> ReadDiskStream<D> {
     /// Returns true if the stream is finished buffering and there is data can be read
     /// right now, false otherwise.
     ///
+    /// This is realtime-safe.
+    ///
     /// In the case where `false` is returned, then you may choose to continue reading
     /// (which will return silence), or to pause playback temporarily.
     pub fn is_ready(&mut self) -> Result<bool, ReadError<D::FatalError>> {
@@ -477,7 +487,7 @@ impl<D: Decoder> ReadDiskStream<D> {
 
     /// Blocks the current thread until the stream is done buffering.
     ///
-    /// NOTE: This should ***never*** be used in a real-time thread. This is only useful
+    /// NOTE: This is ***not*** realtime-safe. This is only useful
     /// for making sure a stream is ready before sending it to a realtime thread.
     pub fn block_until_ready(&mut self) -> Result<(), ReadError<D::FatalError>> {
         loop {
@@ -493,7 +503,7 @@ impl<D: Decoder> ReadDiskStream<D> {
 
     /// Blocks the current thread until the given buffer is filled.
     ///
-    /// NOTE: This should ***never*** be used in a real-time thread.
+    /// NOTE: This is ***not*** realtime-safe.
     ///
     /// This will start reading from the stream's current playhead (this can be changed
     /// beforehand with `ReadDiskStream::seek()`). This is streaming, meaning the next call to
@@ -647,6 +657,8 @@ impl<D: Decoder> ReadDiskStream<D> {
     }
 
     /// Read the next chunk of `frames` in the stream from the current playhead position.
+    ///
+    /// This is realtime-safe.
     ///
     /// This is *streaming*, meaning the next call to `read()` will pick up where the
     /// previous call left off.
@@ -893,16 +905,22 @@ impl<D: Decoder> ReadDiskStream<D> {
     }
 
     /// Return the current frame of the playhead.
+    ///
+    /// This is realtime-safe.
     pub fn playhead(&self) -> usize {
         self.current_block_start_frame + self.current_frame_in_block
     }
 
     /// Return info about the file.
+    ///
+    /// This is realtime-safe.
     pub fn info(&self) -> &FileInfo<D::FileParams> {
         &self.file_info
     }
 
     /// Return the block size used by this decoder.
+    ///
+    /// This is realtime-safe.
     pub fn block_size(&self) -> usize {
         self.block_size
     }

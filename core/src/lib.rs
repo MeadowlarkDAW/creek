@@ -13,16 +13,16 @@ pub use write::{
 
 const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);
 
-/// Info about the file.
+/// Info about the file/files.
 #[derive(Clone)]
 pub struct FileInfo<FileParams> {
-    /// The total number of frames in the file.
+    /// The total number of frames in the file/files.
     pub num_frames: usize,
-    /// The number of channels in the file.
+    /// The number of channels in the file/files.
     pub num_channels: u16,
-    /// The sample rate of the file (if it exists).
+    /// The sample rate of the file/files (if it exists).
     pub sample_rate: Option<f64>,
 
-    /// Additional info provided by the decoder.
+    /// Additional info provided by the encoder/decoder.
     pub params: FileParams,
 }

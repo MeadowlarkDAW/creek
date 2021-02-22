@@ -15,11 +15,14 @@ pub enum WriteError<FatalEncoderError: Error> {
     /// A fatal error occured. The stream cannot continue.
     FatalError(FatalWriteError<FatalEncoderError>),
     /// There are no more blocks left in the buffer because the server was
-    /// too slow writing previous ones. Make sure there are enough write
-    /// blocks available to the stream.
+    /// too slow writing previous ones. Make sure there are enough write blocks
+    /// available to the stream.
     ///
-    /// In theory this should not happen. If it does, then no data in the
-    /// given buffer will be written to the file.
+    /// In theory this should not happen, but if it does, try writing again
+    /// later.
+    ///
+    /// If this is returned, then no data in the given buffer will be written
+    /// to the file.
     Underflow,
     /// The given buffer is too long. The length of the buffer cannot exceed
     /// `block_size`. The value of `block_size` can be retrieved using

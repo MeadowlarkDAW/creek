@@ -156,7 +156,7 @@ impl<B: BitWriter + 'static> Encoder for WavEncoder<B> {
 
         if let Some(mut file) = self.file.take() {
             let written_frames = write_block.written_frames();
-
+ 
             if self.num_channels == 1 {
                 self.bit_writer
                     .write_to_disk(&write_block.block()[0][0..written_frames], &mut file)?;

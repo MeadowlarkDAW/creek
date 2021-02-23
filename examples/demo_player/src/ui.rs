@@ -156,7 +156,7 @@ impl epi::App for DemoPlayerApp {
 
             ui.horizontal(|ui| {
                 let play_label = if self.playing { "Pause" } else { "Play" };
-                if ui.button(play_label).clicked {
+                if ui.button(play_label).clicked() {
                     if self.playing {
                         self.playing = false;
 
@@ -168,12 +168,12 @@ impl epi::App for DemoPlayerApp {
                     }
                 }
 
-                if ui.button("Stop").clicked {
+                if ui.button("Stop").clicked() {
                     self.playing = false;
                     let _ = self.to_player_tx.push(GuiToProcessMsg::Stop);
                 }
 
-                if ui.button("Restart").clicked {
+                if ui.button("Restart").clicked() {
                     self.playing = true;
                     let _ = self.to_player_tx.push(GuiToProcessMsg::Restart);
                 }
@@ -184,7 +184,7 @@ impl epi::App for DemoPlayerApp {
             ui.add(egui::Slider::usize(&mut loop_start, 0..=self.num_frames).text("loop start"));
             ui.add(egui::Slider::usize(&mut loop_end, 0..=self.num_frames).text("loop end"));
             if loop_start != self.loop_start || loop_end != self.loop_end {
-                if ui.input().mouse.released || ui.input().key_pressed(egui::Key::Enter) {
+                if ui.input().pointer.any_released() || ui.input().key_pressed(egui::Key::Enter) {
                     if loop_end <= loop_start {
                         if loop_start == self.num_frames {
                             loop_start = self.num_frames - 1;
@@ -308,13 +308,13 @@ impl TransportControl {
             self.loop_stroke,
         ));
 
-        if let Some(press_origin) = ui.input().mouse.press_origin {
+        if let Some(press_origin) = ui.input().pointer.press_origin() {
             if press_origin.x >= start_x
                 && press_origin.x <= end_x
                 && press_origin.y >= rail_y - 10.0
                 && press_origin.y <= rail_y + 10.0
             {
-                if let Some(mouse_pos) = ui.input().mouse.pos {
+                if let Some(mouse_pos) = ui.input().pointer.interact_pos() {
                     let handle_x = mouse_pos.x - start_x;
                     *value = (((handle_x / rail_width) * max_value as f32).round() as isize)
                         .max(0)
@@ -326,7 +326,15 @@ impl TransportControl {
         }
 
         let mut changed: bool = false;
-        if ui.input().mouse.released && self.seeking {
+        if ui.input().pointer.any_released() && self.seeking {
+            if let Some(mouse_pos) = ui.input().pointer.interact_pos() {
+                let handle_x = mouse_pos.x - start_x;
+                *value = (((handle_x / rail_width) * max_value as f32).round() as isize)
+                    .max(0)
+                    .min(max_value as isize) as usize;
+            }
+
+
             self.seeking = false;
 
             changed = true;

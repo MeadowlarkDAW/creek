@@ -79,9 +79,9 @@ impl BitWriter for Int24 {
         assert!(num_frames * 4 == data_u8.len());
 
         for f in 0..num_frames {
-            self.cram_buffer.push(data_u8[(f * 4) + 3]);
-            self.cram_buffer.push(data_u8[(f * 4) + 2]);
+            self.cram_buffer.push(data_u8[(f * 4)]);
             self.cram_buffer.push(data_u8[(f * 4) + 1]);
+            self.cram_buffer.push(data_u8[(f * 4) + 2]);
         }
 
         file.write_all(&self.cram_buffer)

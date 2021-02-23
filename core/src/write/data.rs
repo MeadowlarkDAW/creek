@@ -1,13 +1,13 @@
 /// A block to write data to.
 pub struct WriteBlock<T: Copy + Clone + Default + Send> {
-    pub(crate) block: Vec<Vec<T>>,
+    pub block: Vec<Vec<T>>,
 
-    pub(crate) written_frames: usize,
+    pub written_frames: usize,
     pub(crate) restart_count: usize,
 }
 
 impl<T: Copy + Clone + Default + Send> WriteBlock<T> {
-    pub(crate) fn new(num_channels: usize, block_size: usize) -> Self {
+    pub fn new(num_channels: usize, block_size: usize) -> Self {
         let mut block: Vec<Vec<T>> = Vec::with_capacity(num_channels);
         for _ in 0..num_channels {
             let mut data: Vec<T> = Vec::with_capacity(block_size);

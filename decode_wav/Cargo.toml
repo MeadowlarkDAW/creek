@@ -1,5 +1,5 @@
 [package]
-name = "rt-audio-disk-stream-wav-only"
+name = "rt-audio-disk-stream-decode-wav"
 version = "0.1.0"
 authors = ["Billy Messenger <BillyDM@protonmail.com>"]
 edition = "2018"

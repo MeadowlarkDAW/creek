@@ -9,6 +9,9 @@ use rt_audio_disk_stream_core::{write, Encoder, FileInfo, WriteBlock, WriteStatu
 mod error;
 mod header;
 
+#[cfg(test)]
+mod tests;
+
 pub mod bit_writer;
 
 pub use bit_writer::*;
@@ -103,6 +106,7 @@ impl<B: BitWriter + 'static> Encoder for WavEncoder<B> {
         let mut file = OpenOptions::new()
             .write(true)
             .truncate(true)
+            .create(true)
             .open(path.clone())?;
 
         let format = B::format();
@@ -220,6 +224,7 @@ impl<B: BitWriter + 'static> Encoder for WavEncoder<B> {
                 let mut file = OpenOptions::new()
                     .write(true)
                     .truncate(true)
+                    .create(true)
                     .open(new_file_path)?;
 
                 self.frames_written = 0;
@@ -322,6 +327,7 @@ impl<B: BitWriter + 'static> Encoder for WavEncoder<B> {
                 let mut file = OpenOptions::new()
                     .write(true)
                     .truncate(true)
+                    .create(true)
                     .open(self.path.clone())?;
                 file.seek(SeekFrom::Start(0))?;
                 file.write_all(self.header.buffer())?;

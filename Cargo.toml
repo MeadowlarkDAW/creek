@@ -16,17 +16,21 @@ readme = "README.md"
 [workspace]
 members = [
     "core",
-    "wav_only",
+    "decode_wav",
     "encode_wav",
     "examples/demo_player",
 ]
 
 [features]
-default = ["wav-only"]
-wav-only = ["rt-audio-disk-stream-wav-only"]
-open-source = []
-all_codecs = []
+default = ["decode-wav-only", "encode-wav-only"]
+decode-wav-only = ["rt-audio-disk-stream-decode-wav"]
+decode-open-source = []
+decode-all = []
+encode-wav-only = ["rt-audio-disk-stream-encode-wav"]
+encode-open-source = []
+encode-all = []
 
 [dependencies]
 rt-audio-disk-stream-core = { path = "core" }
-rt-audio-disk-stream-wav-only = { path = "wav_only", optional = true }
+rt-audio-disk-stream-decode-wav = { path = "decode_wav", optional = true }
+rt-audio-disk-stream-encode-wav = { path = "encode_wav", optional = true }

@@ -27,7 +27,7 @@ impl Output {
             buffer_size: cpal::BufferSize::Default,
         };
 
-        let mut process = Process::new(to_gui_tx, from_gui_rx);
+        let mut process = Process::new(to_gui_tx, from_gui_rx, sample_rate.0);
 
         let stream = device
             .build_output_stream(

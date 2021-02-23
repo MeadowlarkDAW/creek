@@ -81,15 +81,6 @@ impl<E: Encoder> WriteServer<E> {
         while self.run {
             let mut do_sleep = true;
 
-            // Check for close signal.
-            if let Ok(heap_data) = self.close_signal_rx.pop() {
-                // Drop heap data here.
-                let _ = heap_data;
-                self.run = false;
-                self.client_closed = true;
-                break;
-            }
-
             while let Ok(msg) = self.from_client_rx.pop() {
                 match msg {
                     ClientToServerMsg::WriteBlock { mut block } => {
@@ -177,6 +168,15 @@ impl<E: Encoder> WriteServer<E> {
                         }
                     }
                 }
+            }
+
+            // Check for close signal.
+            if let Ok(heap_data) = self.close_signal_rx.pop() {
+                // Drop heap data here.
+                let _ = heap_data;
+                self.run = false;
+                self.client_closed = true;
+                break;
             }
 
             if do_sleep {

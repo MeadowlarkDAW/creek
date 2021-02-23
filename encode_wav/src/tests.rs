@@ -1,3 +1,4 @@
+/*
 use crate::wav_bit_depth::*;
 use crate::*;
 use std::{f64, path::PathBuf};
@@ -221,3 +222,4 @@ fn encode_wav() {
 
     encoder.finish_file().unwrap();
 }
+*/

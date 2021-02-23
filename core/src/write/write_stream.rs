@@ -183,7 +183,7 @@ impl<E: Encoder> WriteDiskStream<E> {
     /// "_XXX" appended to the end (i.e. "_001", "_002", etc.).
     /// `WriteDiskStream::num_files()` can be used to get the total numbers of files that
     /// have been created.
-    pub fn write(&mut self, buffer: &mut [Vec<E::T>]) -> Result<(), WriteError<E::FatalError>> {
+    pub fn write(&mut self, buffer: &[&[E::T]]) -> Result<(), WriteError<E::FatalError>> {
         if self.fatal_error || self.finished {
             return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
         }

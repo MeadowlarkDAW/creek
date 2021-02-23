@@ -1,8 +1,8 @@
 /// A block to write data to.
 pub struct WriteBlock<T: Copy + Clone + Default + Send> {
-    pub block: Vec<Vec<T>>,
+    pub(crate) block: Vec<Vec<T>>,
 
-    pub written_frames: usize,
+    pub(crate) written_frames: usize,
     pub(crate) restart_count: usize,
 }
 

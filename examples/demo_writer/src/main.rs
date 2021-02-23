@@ -6,7 +6,8 @@ mod process;
 mod ui;
 
 pub enum GuiToProcessMsg {
-    UseStreamU8(WriteDiskStream<WavEncoder<wav_bit_depth::Uint8>>),
+    SetFreq(f32),
+    UseStreamUint8(WriteDiskStream<WavEncoder<wav_bit_depth::Uint8>>),
     UseStreamInt16(WriteDiskStream<WavEncoder<wav_bit_depth::Int16>>),
     UseStreamInt24(WriteDiskStream<WavEncoder<wav_bit_depth::Int24>>),
     UseStreamFloat32(WriteDiskStream<WavEncoder<wav_bit_depth::Float32>>),

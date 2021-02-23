@@ -198,7 +198,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
             // Update the header in the file.
             file.seek(SeekFrom::Start(0))?;
             file.write_all(self.header.buffer())?;
-            file.seek(SeekFrom::Start(bytes_written))?;
+            file.seek(SeekFrom::Current(bytes_written as i64))?;
             file.flush()?;
 
             // Make sure the number of written bytes does not exceed 4GB.
@@ -297,14 +297,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
             self.frames_written = 0;
             self.header.set_num_frames(0);
 
-            if self.num_files == 1 {
-                file.set_len(0)?;
-                file.seek(SeekFrom::Start(0))?;
-                file.write_all(self.header.buffer())?;
-                file.flush()?;
-
-                self.file = Some(file);
-            } else {
+            if self.num_files > 1 {
                 // Drop the old file here.
                 let _ = file;
 
@@ -333,9 +326,16 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                 file.flush()?;
 
                 self.file = Some(file);
-            }
+                self.num_files = 1;
+            } else {
+                file.set_len(0)?;
 
-            self.num_files = 1;
+                file.seek(SeekFrom::Start(0))?;
+                file.write_all(self.header.buffer())?;
+                file.flush()?;
+
+                self.file = Some(file);
+            }
         }
 
         Ok(())

@@ -34,15 +34,16 @@ In addition to the default decoders, you may define your own using the `Decoder`
 
 | Format   | Status                       | Default |
 |----------|------------------------------|---------|
+| Wav      | :heavy_check_mark: Compliant | Yes     |
 | ISO/MP4  | :x:                          | No      |
 | MKV/WebM | :x:                          | Yes     |
 | OGG      | :x:                          | Yes     |
-| Wav      | :heavy_check_mark: Compliant | Yes     |
 
 ### Codecs (Decode)
 
 | Codec                        | Status                       | Default |
 |------------------------------|------------------------------|---------|
+| Wav                          | :heavy_check_mark: Compliant | Yes     |
 | AAC-LC                       | :x:                          | No      |
 | HE-AAC (AAC+, aacPlus)       | :x:                          | No      |
 | HE-AACv2 (eAAC+, aacPlus v2) | :x:                          | No      |
@@ -54,27 +55,31 @@ In addition to the default decoders, you may define your own using the `Decoder`
 | PCM                          | :x:                          | Yes     |
 | Vorbis                       | :x:                          | Yes     |
 | WavPack                      | :x:                          | Yes     |
-| Wav                          | :heavy_check_mark: Compliant | Yes     |
 
 ### Codecs (Encode)
-| Codec                        | Status                       | Default |
-|------------------------------|------------------------------|---------|
-| FLAC                         | :x:                          | Yes     |
-| MP3                          | :x:                          | No      |
-| Opus                         | :x:                          | Yes     |
-| PCM                          | :x:                          | Yes     |
-| Vorbis                       | :x:                          | Yes     |
-| Wav                          | :x:                          | Yes     |
+| Codec                        | Status                                          | Default |
+|------------------------------|-------------------------------------------------|---------|
+| Wav                          | :heavy_check_mark: Uncompressed, no channel map | Yes     |
+| FLAC                         | ? Not currently on roadmap                      | No      |
+| MP3                          | ? Not currently on roadmap                      | No      |
+| Opus                         | ? Not currently on roadmap                      | No      |
+| PCM                          | ? Not currently on roadmap                      | No      |
+| Vorbis                       | ? Not currently on roadmap                      | No      |
 
 # Examples
 
 ## Simple Usage Example
 ```rust
-use rt_audio_disk_stream::{Decoder, SymphoniaDecoder, SeekMode};
+use rt_audio_disk_stream::{
+    SymphoniaDecoder, SeekMode, ReadDiskStream,
+    WriteDiskStream, WavEncoder, wav_bit_depth
+};
 
-// Open the read stream.
-let mut read_disk_stream = rt_audio_disk_stream::open_read::<SymphoniaDecoder, _>(
-    "./test_files/wav_i24_stereo.wav",  // Path to file.
+// Open a read stream.
+
+
+let mut read_disk_stream = ReadDiskStream::<SymphoniaDecoder>::new(
+    "./test_files/wav_f32_stereo.wav",  // Path to file.
     0,  // The frame in the file to start reading from.
     Default::default(),  // Use default read stream options.
 ).unwrap();
@@ -94,12 +99,26 @@ read_disk_stream.block_until_ready().unwrap();
 // (Send `read_stream` to the audio processing thread)
 
 
+// Open a write stream.
+
+
+WriteDiskStream::<WavEncoder<wav_bit_depth::Float32>>::new(
+    "./test_files/wav_f32_stereo_out.wav",  // Path to file.
+    2,  // The number of channels in the file
+    44100,  // The sample rate of the file
+    Default::default(),  // Use default write stream options.
+).unwrap();
+
+// (Send `write_stream` to the audio processing thread)
+
+
 // -------------------------------------------------------------
+
 
 // In the realtime audio processing thread:
 
 
-// Update client and check if it is ready.
+// Update read client and check if it is ready.
 //
 // NOTE: You should avoid using `unwrap()` in realtime code.
 if !read_disk_stream.is_ready().unwrap() {
@@ -116,6 +135,13 @@ println!("{}", read_data.num_channels());
 read_disk_stream.seek(50000, SeekMode::Auto};
 
 assert_eq!(read_dist_stream.playhead(), 50000);
+
+
+// Send stereo data to be written to disk.
+
+write_disk_stream.write(
+    &[read_data.read_channel(0), read_data.read_channel(1)]
+).unwrap();
 ```
 
 ## Demo Audio Player

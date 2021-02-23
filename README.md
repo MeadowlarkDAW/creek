@@ -1,10 +1,10 @@
 # Realtime Audio Disk Stream
 Realtime disk streaming IO for audio files
 
-This crate is currently experimental and incomplete.
+This crate is currently incomplete. So far only uncompressed WAV files are functional.
 
 
-# How it Works
+# How the Read Stream Works
 
 <div><img src="how_it_works.svg", alt="how it works"></div>
 
@@ -17,6 +17,12 @@ There are a number of `look-ahead` blocks ahead of the currently used cache bloc
 The stream can have as many `cache` buffers as desired. When seeking to a frame in the file, the stream searches for a cache that contains that frame. If one does, then it uses it and playback can resume immediately. A common use case is to cache the start of a file or loop region for seamless looping.
 
 If a suitable cache is not found (or the cache is not loaded yet), then the `look-ahead` buffer will need to fill-up before any more data can be read. In this case, you may choose to either continue playback (which will output silence) or to temporarily pause playback.
+
+This stream automatically spawns an "IO server" that handles the non-realtime safe operations. This server is automatically closed when the stream is dropped.
+
+# How the Write Stream Works
+
+The write stream works how you would expect. Once a block is filled with data, it is sent to the IO server to be written. This block is also recycled back to the stream after writing is done.
 
 # Format and Codec Support Roadmap
 
@@ -115,5 +121,9 @@ assert_eq!(read_dist_stream.playhead(), 50000);
 ## Demo Audio Player
 Here is a basic [`looping demo player`] that plays a single wav file with adjustable loop regions.
 
+## Demo Audio Recorder
+Here is a basic [`writer app`] that records a tone to a wav file.
+
 [`Symphonia`]: https://github.com/pdeljanov/Symphonia
 [`looping demo player`]: https://github.com/RustyDAW/rt-audio-disk-stream/tree/main/examples/demo_player
+[`writer app`]: https://github.com/RustyDAW/rt-audio-disk-stream/tree/main/examples/demo_writer

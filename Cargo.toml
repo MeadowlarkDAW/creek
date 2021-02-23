@@ -23,13 +23,11 @@ members = [
 ]
 
 [features]
-default = ["decode-wav-only", "encode-wav-only"]
+default = ["decode-wav-only", "encode-wav"]
 decode-wav-only = ["rt-audio-disk-stream-decode-wav"]
 decode-open-source = []
 decode-all = []
-encode-wav-only = ["rt-audio-disk-stream-encode-wav"]
-encode-open-source = []
-encode-all = []
+encode-wav = ["rt-audio-disk-stream-encode-wav"]
 
 [dependencies]
 rt-audio-disk-stream-core = { path = "core" }

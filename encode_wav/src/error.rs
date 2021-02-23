@@ -3,18 +3,18 @@ use std::io;
 use crate::Format;
 
 #[derive(Debug)]
-pub enum OpenError {
+pub enum WavOpenError {
     Io(io::Error),
     CodecNotImplementedYet { num_channels: u16, format: Format },
 }
 
-impl std::error::Error for OpenError {}
+impl std::error::Error for WavOpenError {}
 
-impl std::fmt::Display for OpenError {
+impl std::fmt::Display for WavOpenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OpenError::Io(e) => write!(f, "IO error: {:?}", e),
-            OpenError::CodecNotImplementedYet {
+            WavOpenError::Io(e) => write!(f, "IO error: {:?}", e),
+            WavOpenError::CodecNotImplementedYet {
                 num_channels,
                 format,
             } => {
@@ -28,35 +28,35 @@ impl std::fmt::Display for OpenError {
     }
 }
 
-impl From<io::Error> for OpenError {
+impl From<io::Error> for WavOpenError {
     fn from(e: io::Error) -> Self {
-        OpenError::Io(e)
+        WavOpenError::Io(e)
     }
 }
 
 #[derive(Debug)]
-pub enum FatalError {
+pub enum WavFatalError {
     Io(io::Error),
     ReachedMaxSize,
     CouldNotGetFileName,
 }
 
-impl std::error::Error for FatalError {}
+impl std::error::Error for WavFatalError {}
 
-impl std::fmt::Display for FatalError {
+impl std::fmt::Display for WavFatalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FatalError::Io(e) => write!(f, "IO error: {:?}", e),
-            FatalError::ReachedMaxSize => write!(f, "Reached maximum WAVE file size of 4GB"),
-            FatalError::CouldNotGetFileName => {
+            WavFatalError::Io(e) => write!(f, "IO error: {:?}", e),
+            WavFatalError::ReachedMaxSize => write!(f, "Reached maximum WAVE file size of 4GB"),
+            WavFatalError::CouldNotGetFileName => {
                 write!(f, "There was an error reading the name of the file")
             }
         }
     }
 }
 
-impl From<io::Error> for FatalError {
+impl From<io::Error> for WavFatalError {
     fn from(e: io::Error) -> Self {
-        FatalError::Io(e)
+        WavFatalError::Io(e)
     }
 }

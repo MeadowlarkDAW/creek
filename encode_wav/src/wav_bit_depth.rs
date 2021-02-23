@@ -3,7 +3,7 @@ use byte_slice_cast::AsByteSlice;
 use std::fs::File;
 use std::io::Write;
 
-pub trait BitWriter {
+pub trait WavBitDepth {
     type T: Copy + Clone + Default + Send;
 
     fn new(max_block_frames: usize, num_channels: u16) -> Self;
@@ -15,7 +15,7 @@ pub trait BitWriter {
 
 pub struct Uint8 {}
 
-impl BitWriter for Uint8 {
+impl WavBitDepth for Uint8 {
     type T = u8;
 
     fn new(_max_block_frames: usize, _num_channels: u16) -> Self {
@@ -33,7 +33,7 @@ impl BitWriter for Uint8 {
 
 pub struct Int16 {}
 
-impl BitWriter for Int16 {
+impl WavBitDepth for Int16 {
     type T = i16;
 
     fn new(_max_block_frames: usize, _num_channels: u16) -> Self {
@@ -53,7 +53,7 @@ pub struct Int24 {
     cram_buffer: Vec<u8>,
 }
 
-impl BitWriter for Int24 {
+impl WavBitDepth for Int24 {
     type T = i32;
 
     fn new(max_block_frames: usize, num_channels: u16) -> Self {
@@ -90,7 +90,7 @@ impl BitWriter for Int24 {
 
 pub struct Float32 {}
 
-impl BitWriter for Float32 {
+impl WavBitDepth for Float32 {
     type T = f32;
 
     fn new(_max_block_frames: usize, _num_channels: u16) -> Self {
@@ -108,7 +108,7 @@ impl BitWriter for Float32 {
 
 pub struct Float64 {}
 
-impl BitWriter for Float64 {
+impl WavBitDepth for Float64 {
     type T = f64;
 
     fn new(_max_block_frames: usize, _num_channels: u16) -> Self {

@@ -1,7 +1,3 @@
-use std::path::PathBuf;
-
-use rtrb::RingBuffer;
-
 mod data;
 mod decoder;
 mod read_stream;
@@ -105,65 +101,5 @@ impl<D: Decoder> Default for ReadStreamOptions<D> {
             num_caches: 1,
             server_msg_channel_size: None,
         }
-    }
-}
-
-/// Open a new realtime-safe disk-streaming reader.
-///
-/// * `file` - The path to the file to open.
-/// * `start_frame` - The frame in the file to start reading from.
-/// * `stream_opts` - Additional stream options.
-pub fn open_read<D: Decoder, P: Into<PathBuf>>(
-    file: P,
-    start_frame: usize,
-    stream_opts: ReadStreamOptions<D>,
-) -> Result<ReadDiskStream<D>, D::OpenError> {
-    assert_ne!(stream_opts.block_size, 0);
-    assert_ne!(stream_opts.num_look_ahead_blocks, 0);
-    assert_ne!(stream_opts.server_msg_channel_size, Some(0));
-
-    // Reserve ample space for the message channels.
-    let msg_channel_size = stream_opts.server_msg_channel_size.unwrap_or(
-        ((stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks) * 4)
-            + (stream_opts.num_caches * 4)
-            + 8,
-    );
-
-    let (to_server_tx, from_client_rx) =
-        RingBuffer::<ClientToServerMsg<D>>::new(msg_channel_size).split();
-    let (to_client_tx, from_server_rx) =
-        RingBuffer::<ServerToClientMsg<D>>::new(msg_channel_size).split();
-
-    // Create dedicated close signal.
-    let (close_signal_tx, close_signal_rx) = RingBuffer::<Option<HeapData<D::T>>>::new(1).split();
-
-    let file: PathBuf = file.into();
-
-    match ReadServer::new(
-        file,
-        start_frame,
-        stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks,
-        stream_opts.block_size,
-        to_client_tx,
-        from_client_rx,
-        close_signal_rx,
-        stream_opts.additional_opts,
-    ) {
-        Ok(file_info) => {
-            let client = ReadDiskStream::new(
-                to_server_tx,
-                from_server_rx,
-                close_signal_tx,
-                start_frame,
-                stream_opts.num_cache_blocks,
-                stream_opts.num_look_ahead_blocks,
-                stream_opts.num_caches,
-                stream_opts.block_size,
-                file_info,
-            );
-
-            Ok(client)
-        }
-        Err(e) => Err(e),
     }
 }

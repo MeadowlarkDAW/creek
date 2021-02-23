@@ -1,3 +1,4 @@
+use crate::wav_bit_depth::*;
 use crate::*;
 use std::{f64, path::PathBuf};
 
@@ -63,7 +64,7 @@ fn encode_wav() {
     block.block[0].copy_from_slice(&sine_u8_l);
     block.written_frames = 32768;
 
-    let (mut encoder, _info) = WavEncoder::<Uint8>::new(path, 1, 44100.0, 32768, 8, ()).unwrap();
+    let (mut encoder, _info) = WavEncoder::<Uint8>::new(path, 1, 44100, 32768, 8, ()).unwrap();
 
     unsafe {
         encoder.encode(&block).unwrap();
@@ -80,7 +81,7 @@ fn encode_wav() {
     block.block[1].copy_from_slice(&sine_u8_r);
     block.written_frames = 32768;
 
-    let (mut encoder, _info) = WavEncoder::<Uint8>::new(path, 2, 44100.0, 32768, 8, ()).unwrap();
+    let (mut encoder, _info) = WavEncoder::<Uint8>::new(path, 2, 44100, 32768, 8, ()).unwrap();
 
     unsafe {
         encoder.encode(&block).unwrap();
@@ -96,7 +97,7 @@ fn encode_wav() {
     block.block[0].copy_from_slice(&sine_i16_l);
     block.written_frames = 32768;
 
-    let (mut encoder, _info) = WavEncoder::<Int16>::new(path, 1, 44100.0, 32768, 8, ()).unwrap();
+    let (mut encoder, _info) = WavEncoder::<Int16>::new(path, 1, 44100, 32768, 8, ()).unwrap();
 
     unsafe {
         encoder.encode(&block).unwrap();
@@ -113,7 +114,7 @@ fn encode_wav() {
     block.block[1].copy_from_slice(&sine_i16_r);
     block.written_frames = 32768;
 
-    let (mut encoder, _info) = WavEncoder::<Int16>::new(path, 2, 44100.0, 32768, 8, ()).unwrap();
+    let (mut encoder, _info) = WavEncoder::<Int16>::new(path, 2, 44100, 32768, 8, ()).unwrap();
 
     unsafe {
         encoder.encode(&block).unwrap();
@@ -129,7 +130,7 @@ fn encode_wav() {
     block.block[0].copy_from_slice(&sine_i24_l);
     block.written_frames = 32768;
 
-    let (mut encoder, _info) = WavEncoder::<Int24>::new(path, 1, 44100.0, 32768, 8, ()).unwrap();
+    let (mut encoder, _info) = WavEncoder::<Int24>::new(path, 1, 44100, 32768, 8, ()).unwrap();
 
     unsafe {
         encoder.encode(&block).unwrap();
@@ -146,7 +147,7 @@ fn encode_wav() {
     block.block[1].copy_from_slice(&sine_i24_r);
     block.written_frames = 32768;
 
-    let (mut encoder, _info) = WavEncoder::<Int24>::new(path, 2, 44100.0, 32768, 8, ()).unwrap();
+    let (mut encoder, _info) = WavEncoder::<Int24>::new(path, 2, 44100, 32768, 8, ()).unwrap();
 
     unsafe {
         encoder.encode(&block).unwrap();
@@ -162,7 +163,7 @@ fn encode_wav() {
     block.block[0].copy_from_slice(&sine_f32_l);
     block.written_frames = 32768;
 
-    let (mut encoder, _info) = WavEncoder::<Float32>::new(path, 1, 44100.0, 32768, 8, ()).unwrap();
+    let (mut encoder, _info) = WavEncoder::<Float32>::new(path, 1, 44100, 32768, 8, ()).unwrap();
 
     unsafe {
         encoder.encode(&block).unwrap();
@@ -179,7 +180,7 @@ fn encode_wav() {
     block.block[1].copy_from_slice(&sine_f32_r);
     block.written_frames = 32768;
 
-    let (mut encoder, _info) = WavEncoder::<Float32>::new(path, 2, 44100.0, 32768, 8, ()).unwrap();
+    let (mut encoder, _info) = WavEncoder::<Float32>::new(path, 2, 44100, 32768, 8, ()).unwrap();
 
     unsafe {
         encoder.encode(&block).unwrap();
@@ -195,7 +196,7 @@ fn encode_wav() {
     block.block[0].copy_from_slice(&sine_f64);
     block.written_frames = 32768;
 
-    let (mut encoder, _info) = WavEncoder::<Float64>::new(path, 1, 44100.0, 32768, 8, ()).unwrap();
+    let (mut encoder, _info) = WavEncoder::<Float64>::new(path, 1, 44100, 32768, 8, ()).unwrap();
 
     unsafe {
         encoder.encode(&block).unwrap();
@@ -212,7 +213,7 @@ fn encode_wav() {
     block.block[1].copy_from_slice(&sine_f64_r);
     block.written_frames = 32768;
 
-    let (mut encoder, _info) = WavEncoder::<Float64>::new(path, 2, 44100.0, 32768, 8, ()).unwrap();
+    let (mut encoder, _info) = WavEncoder::<Float64>::new(path, 2, 44100, 32768, 8, ()).unwrap();
 
     unsafe {
         encoder.encode(&block).unwrap();

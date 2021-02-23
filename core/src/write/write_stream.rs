@@ -1,8 +1,10 @@
-use rtrb::{Consumer, Producer};
+use rtrb::{Consumer, Producer, RingBuffer};
+use std::path::PathBuf;
 
+use super::error::{FatalWriteError, WriteError};
 use super::{
-    ClientToServerMsg, Encoder, FatalWriteError, HeapData, ServerToClientMsg, WriteBlock,
-    WriteError,
+    ClientToServerMsg, Encoder, HeapData, ServerToClientMsg, WriteBlock, WriteServer,
+    WriteStreamOptions,
 };
 use crate::{FileInfo, SERVER_WAIT_TIME};
 
@@ -26,7 +28,68 @@ pub struct WriteDiskStream<E: Encoder> {
 }
 
 impl<E: Encoder> WriteDiskStream<E> {
-    pub(crate) fn new(
+    /// Open a new realtime-safe disk-streaming writer.
+    ///
+    /// * `file` - The path to the file to open.
+    /// * `num_channels` - The number of channels in the file.
+    /// * `sample_rate` - The sample rate of the file.
+    /// * `stream_opts` - Additional stream options.
+    pub fn new<P: Into<PathBuf>>(
+        file: P,
+        num_channels: u16,
+        sample_rate: u32,
+        stream_opts: WriteStreamOptions<E>,
+    ) -> Result<WriteDiskStream<E>, E::OpenError> {
+        assert_ne!(num_channels, 0);
+        assert_ne!(sample_rate, 0);
+        assert_ne!(stream_opts.block_size, 0);
+        assert_ne!(stream_opts.num_write_blocks, 0);
+        assert_ne!(stream_opts.server_msg_channel_size, Some(0));
+
+        // Reserve ample space for the message channels.
+        let msg_channel_size = stream_opts
+            .server_msg_channel_size
+            .unwrap_or((stream_opts.num_write_blocks * 4) + 8);
+
+        let (to_server_tx, from_client_rx) =
+            RingBuffer::<ClientToServerMsg<E>>::new(msg_channel_size).split();
+        let (to_client_tx, from_server_rx) =
+            RingBuffer::<ServerToClientMsg<E>>::new(msg_channel_size).split();
+
+        // Create dedicated close signal.
+        let (close_signal_tx, close_signal_rx) =
+            RingBuffer::<Option<HeapData<E::T>>>::new(1).split();
+
+        let file: PathBuf = file.into();
+
+        match WriteServer::new(
+            file,
+            stream_opts.num_write_blocks,
+            stream_opts.block_size,
+            num_channels,
+            sample_rate,
+            to_client_tx,
+            from_client_rx,
+            close_signal_rx,
+            stream_opts.additional_opts,
+        ) {
+            Ok(file_info) => {
+                let client = WriteDiskStream::create(
+                    to_server_tx,
+                    from_server_rx,
+                    close_signal_tx,
+                    stream_opts.num_write_blocks,
+                    stream_opts.block_size,
+                    file_info,
+                );
+
+                Ok(client)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    pub(crate) fn create(
         to_server_tx: Producer<ClientToServerMsg<E>>,
         from_server_rx: Consumer<ServerToClientMsg<E>>,
         close_signal_tx: Producer<Option<HeapData<E::T>>>,

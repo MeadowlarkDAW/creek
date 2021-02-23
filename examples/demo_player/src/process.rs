@@ -1,4 +1,5 @@
-use rt_audio_disk_stream::{Decoder, ReadDiskStream, ReadError, SeekMode, SymphoniaDecoder};
+use rt_audio_disk_stream::read::ReadError;
+use rt_audio_disk_stream::{Decoder, ReadDiskStream, SeekMode, SymphoniaDecoder};
 use rtrb::{Consumer, Producer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
@@ -48,10 +49,19 @@ impl Process {
             return;
         }
 
-        if let Err(e) = self.try_process(data) {
-            println!("{:?}", e);
-            self.fatal_error = true;
-            silence(data);
+        match self.try_process(data) {
+            Ok(_) => {}
+            Err(e) => {
+                match e {
+                    ReadError::FatalError(_) => {
+                        self.fatal_error = true;
+                    }
+                    _ => {}
+                }
+
+                println!("{:?}", e);
+                silence(data);
+            }
         }
     }
 

@@ -27,7 +27,7 @@ impl<E: Encoder> WriteServer<E> {
         num_write_blocks: usize,
         block_size: usize,
         num_channels: u16,
-        sample_rate: f64,
+        sample_rate: u32,
         to_client_tx: Producer<ServerToClientMsg<E>>,
         from_client_rx: Consumer<ClientToServerMsg<E>>,
         close_signal_rx: Consumer<Option<HeapData<E::T>>>,

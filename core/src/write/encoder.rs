@@ -56,7 +56,7 @@ pub trait Encoder: Sized + 'static {
     fn new(
         file: PathBuf,
         num_channels: u16,
-        sample_rate: f64,
+        sample_rate: u32,
         block_size: usize,
         num_write_blocks: usize,
         additional_opts: Self::AdditionalOpts,

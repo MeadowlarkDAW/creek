@@ -1,5 +1,5 @@
 use eframe::{egui, epi};
-use rt_audio_disk_stream::{Decoder, SymphoniaDecoder};
+use rt_audio_disk_stream::{Decoder, ReadDiskStream, ReadStreamOptions, SymphoniaDecoder};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
@@ -35,7 +35,7 @@ impl DemoPlayerApp {
     ) -> Self {
         // Setup read stream -------------------------------------------------------------
 
-        let opts = rt_audio_disk_stream::ReadStreamOptions {
+        let opts = ReadStreamOptions {
             // The number of prefetch blocks in a cache block. This will cause a cache to be
             // used whenever the stream is seeked to a frame in the range:
             //
@@ -56,12 +56,9 @@ impl DemoPlayerApp {
         let cache_size = opts.num_cache_blocks * SymphoniaDecoder::DEFAULT_BLOCK_SIZE;
 
         // Open the read stream.
-        let mut read_stream = rt_audio_disk_stream::open_read::<SymphoniaDecoder, _>(
-            "./test_files/wav_i24_stereo.wav",
-            0,
-            opts,
-        )
-        .unwrap();
+        let mut read_stream =
+            ReadDiskStream::<SymphoniaDecoder>::new("./test_files/wav_i24_stereo.wav", 0, opts)
+                .unwrap();
 
         // Cache the start of the file into cache with index `0`.
         let _ = read_stream.cache(0, 0);
@@ -333,7 +330,6 @@ impl TransportControl {
                     .max(0)
                     .min(max_value as isize) as usize;
             }
-
 
             self.seeking = false;
 

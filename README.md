@@ -1,4 +1,8 @@
 # 🏞️ Creek 🏞️
+[![Documentation](https://img.shields.io/crates/v/creek.svg)](https://docs.rs/creek/)
+[![Crates.io](https://img.shields.io/crates/v/creek.svg)](https://crates.io/crates/creek)
+[![License](https://img.shields.io/crates/l/creek.svg)](https://github.com/RustyDAW/creek/blob/main/COPYRIGHT)
+
 Realtime-safe disk streaming to/from audio files
 
 This crate is currently incomplete. So far only uncompressed WAV files are functional.

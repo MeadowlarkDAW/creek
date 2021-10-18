@@ -3,6 +3,12 @@ name = "creek-encode-wav"
 version = "0.1.0"
 authors = ["Billy Messenger <BillyDM@tutamail.com>"]
 edition = "2018"
+license = "MIT OR Apache-2.0"
+keywords = ["audio", "io", "disk", "stream"]
+categories = ["multimedia::audio"]
+description = "WAV file encoding for creek" 
+documentation = "https://docs.rs/creek-decode-wav"
+repository = "https://github.com/RustyDAW/creek"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

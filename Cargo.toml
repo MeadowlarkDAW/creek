@@ -30,6 +30,6 @@ decode-all = []
 encode-wav = ["creek-encode-wav"]
 
 [dependencies]
-creek-core = { path = "core" }
-creek-decode-wav = { path = "decode_wav", optional = true }
-creek-encode-wav = { path = "encode_wav", optional = true }
+creek-core = { version = "0.1", path = "core" }
+creek-decode-wav = { version = "0.1.0", path = "decode_wav", optional = true }
+creek-encode-wav = { version = "0.1.0", path = "encode_wav", optional = true }

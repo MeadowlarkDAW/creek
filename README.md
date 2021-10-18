@@ -1,5 +1,5 @@
-# Realtime Audio Disk Stream
-Realtime disk streaming IO for audio files
+# 🏞️ Creek 🏞️
+Realtime-safe disk streaming to/from audio files
 
 This crate is currently incomplete. So far only uncompressed WAV files are functional.
 
@@ -70,7 +70,7 @@ In addition to the default decoders, you may define your own using the `Decoder`
 
 ## Simple Usage Example
 ```rust
-use rt_audio_disk_stream::{
+use creek::{
     SymphoniaDecoder, SeekMode, ReadDiskStream,
     WriteDiskStream, WavEncoder, wav_bit_depth
 };
@@ -144,11 +144,9 @@ write_disk_stream.write(
 ).unwrap();
 ```
 
-## Demo Audio Player
-Here is a basic [`looping demo player`] that plays a single wav file with adjustable loop regions.
-
-## Demo Audio Recorder
-Here is a basic [`writer app`] that records a tone to a wav file.
+## Demos
+- A basic [`looping demo player`] that plays a single wav file with adjustable loop regions.
+- A basic [`writer app`] that records a tone to a wav file.
 
 [`Symphonia`]: https://github.com/pdeljanov/Symphonia
 [`looping demo player`]: https://github.com/RustyDAW/rt-audio-disk-stream/tree/main/examples/demo_player

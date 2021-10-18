@@ -1,4 +1,4 @@
-use rt_audio_disk_stream::{ReadDiskStream, SymphoniaDecoder};
+use creek::{ReadDiskStream, SymphoniaDecoder};
 use rtrb::RingBuffer;
 
 mod output;
@@ -21,8 +21,8 @@ pub enum ProcessToGuiMsg {
 }
 
 fn main() {
-    let (to_gui_tx, from_process_rx) = RingBuffer::<ProcessToGuiMsg>::new(256).split();
-    let (to_process_tx, from_gui_rx) = RingBuffer::<GuiToProcessMsg>::new(64).split();
+    let (to_gui_tx, from_process_rx) = RingBuffer::<ProcessToGuiMsg>::new(256);
+    let (to_process_tx, from_gui_rx) = RingBuffer::<GuiToProcessMsg>::new(64);
 
     let app = ui::DemoPlayerApp::new(to_process_tx, from_process_rx);
     let _cpal_stream = output::Output::new(to_gui_tx, from_gui_rx);

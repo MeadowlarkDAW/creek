@@ -4,13 +4,13 @@ use std::path::PathBuf;
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{CodecParameters, Decoder as SymphDecoder, DecoderOptions};
 use symphonia::core::errors::Error;
-use symphonia::core::formats::{FormatOptions, FormatReader, SeekTo};
+use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::core::units::Duration;
 
-use rt_audio_disk_stream_core::{DataBlock, Decoder, FileInfo};
+use creek_core::{DataBlock, Decoder, FileInfo};
 
 mod error;
 pub use error::OpenError;
@@ -79,8 +79,8 @@ impl Decoder for SymphoniaDecoder {
         let params = {
             // Get the default stream.
             let stream = reader
-                .default_stream()
-                .ok_or_else(|| OpenError::NoDefaultStream)?;
+                .default_track()
+                .ok_or_else(|| OpenError::NoDefaultTrack)?;
 
             stream.codec_params.clone()
         };
@@ -93,9 +93,13 @@ impl Decoder for SymphoniaDecoder {
         if start_frame != 0 {
             let seconds = start_frame as f64 / f64::from(sample_rate.unwrap_or(44100));
 
-            reader.seek(SeekTo::Time {
-                time: seconds.into(),
-            })?;
+            reader.seek(
+                SeekMode::Accurate,
+                SeekTo::Time {
+                    time: seconds.into(),
+                    track_id: None,
+                }
+            )?;
         }
 
         // Create a decoder for the stream.
@@ -172,9 +176,13 @@ impl Decoder for SymphoniaDecoder {
 
         let seconds = self.current_frame as f64 / f64::from(self.sample_rate.unwrap_or(44100));
 
-        match self.reader.seek(SeekTo::Time {
-            time: seconds.into(),
-        }) {
+        match self.reader.seek(
+            SeekMode::Accurate,
+            SeekTo::Time {
+                time: seconds.into(),
+                track_id: None,
+            }
+        ) {
             Ok(_res) => {}
             Err(e) => {
                 return Err(e);
@@ -227,7 +235,7 @@ impl Decoder for SymphoniaDecoder {
             if num_frames_to_cpy != 0 {
                 if self.num_channels == 1 {
                     // Mono, no need to deinterleave.
-                    &mut data_block.block[0][block_start..block_start + num_frames_to_cpy]
+                    data_block.block[0][block_start..block_start + num_frames_to_cpy]
                         .copy_from_slice(
                             &self.smp_buf.samples()
                                 [self.curr_smp_buf_i..self.curr_smp_buf_i + num_frames_to_cpy],
@@ -326,7 +334,7 @@ impl Decoder for SymphoniaDecoder {
 
 impl Drop for SymphoniaDecoder {
     fn drop(&mut self) {
-        self.decoder.close();
+        let _ = self.decoder.finalize();
     }
 }
 
@@ -363,7 +371,7 @@ mod tests {
                     //assert_eq!(file_info.sample_rate, file.3);
                 }
                 Err(e) => {
-                    panic!(e)
+                    panic!("{}", e);
                 }
             }
         }

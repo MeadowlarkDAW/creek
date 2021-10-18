@@ -87,13 +87,13 @@ impl<D: Decoder> ReadDiskStream<D> {
         );
 
         let (to_server_tx, from_client_rx) =
-            RingBuffer::<ClientToServerMsg<D>>::new(msg_channel_size).split();
+            RingBuffer::<ClientToServerMsg<D>>::new(msg_channel_size);
         let (to_client_tx, from_server_rx) =
-            RingBuffer::<ServerToClientMsg<D>>::new(msg_channel_size).split();
+            RingBuffer::<ServerToClientMsg<D>>::new(msg_channel_size);
 
         // Create dedicated close signal.
         let (close_signal_tx, close_signal_rx) =
-            RingBuffer::<Option<HeapData<D::T>>>::new(1).split();
+            RingBuffer::<Option<HeapData<D::T>>>::new(1);
 
         let file: PathBuf = file.into();
 
@@ -608,7 +608,7 @@ impl<D: Decoder> ReadDiskStream<D> {
 
                 let read_data = self.read(read_frames)?;
                 for (i, ch) in buffer.iter_mut().enumerate() {
-                    &mut (*ch)[frames_written..frames_written + read_data.num_frames()]
+                    (*ch)[frames_written..frames_written + read_data.num_frames()]
                         .copy_from_slice(read_data.read_channel(i));
                 }
 

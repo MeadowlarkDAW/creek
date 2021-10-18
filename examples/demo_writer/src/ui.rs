@@ -1,5 +1,5 @@
 use eframe::{egui, epi};
-use rt_audio_disk_stream::{wav_bit_depth, WavEncoder, WriteDiskStream};
+use creek::{wav_bit_depth, WavEncoder, WriteDiskStream};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
@@ -37,7 +37,7 @@ impl DemoWriterApp {
         from_player_rx: Consumer<ProcessToGuiMsg>,
         sample_rate: u32,
     ) -> Self {
-        let (frame_close_tx, frame_close_rx) = RingBuffer::new(1).split();
+        let (frame_close_tx, frame_close_rx) = RingBuffer::new(1);
 
         Self {
             file_active: false,

@@ -1,6 +1,6 @@
-use rt_audio_disk_stream::error::WavFatalError;
-use rt_audio_disk_stream::write::WriteError;
-use rt_audio_disk_stream::{wav_bit_depth, WavEncoder, WriteDiskStream};
+use creek::error::WavFatalError;
+use creek::write::WriteError;
+use creek::{wav_bit_depth, WavEncoder, WriteDiskStream};
 use rtrb::{Consumer, Producer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};

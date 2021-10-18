@@ -4,7 +4,7 @@ use std::io;
 pub enum OpenError {
     Io(io::Error),
     Format(symphonia::core::errors::Error),
-    NoDefaultStream,
+    NoDefaultTrack,
     NoNumFrames,
     NoNumChannels,
 }
@@ -16,7 +16,7 @@ impl std::fmt::Display for OpenError {
         match self {
             OpenError::Io(e) => write!(f, "IO error: {:?}", e),
             OpenError::Format(e) => write!(f, "Format error: {:?}", e),
-            OpenError::NoDefaultStream => write!(f, "No default stream for codec"),
+            OpenError::NoDefaultTrack => write!(f, "No default track found for codec"),
             OpenError::NoNumFrames => write!(f, "Failed to find the number of frames in the file"),
             OpenError::NoNumChannels => {
                 write!(f, "Failed to find the number of channels in the file")

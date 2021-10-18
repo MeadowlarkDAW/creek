@@ -36,7 +36,7 @@ impl<D: Decoder> ReadServer<D> {
         additional_opts: D::AdditionalOpts,
     ) -> Result<FileInfo<D::FileParams>, D::OpenError> {
         let (mut open_tx, mut open_rx) =
-            RingBuffer::<Result<FileInfo<D::FileParams>, D::OpenError>>::new(1).split();
+            RingBuffer::<Result<FileInfo<D::FileParams>, D::OpenError>>::new(1);
 
         std::thread::spawn(move || {
             match D::new(file, start_frame, block_size, additional_opts) {

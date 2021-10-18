@@ -1,4 +1,4 @@
-use rt_audio_disk_stream::{wav_bit_depth, WavEncoder, WriteDiskStream};
+use creek::{wav_bit_depth, WavEncoder, WriteDiskStream};
 use rtrb::RingBuffer;
 
 mod output;
@@ -24,8 +24,8 @@ pub enum ProcessToGuiMsg {
 }
 
 fn main() {
-    let (to_gui_tx, from_process_rx) = RingBuffer::<ProcessToGuiMsg>::new(256).split();
-    let (to_process_tx, from_gui_rx) = RingBuffer::<GuiToProcessMsg>::new(64).split();
+    let (to_gui_tx, from_process_rx) = RingBuffer::<ProcessToGuiMsg>::new(256);
+    let (to_process_tx, from_gui_rx) = RingBuffer::<GuiToProcessMsg>::new(64);
 
     let (_cpal_stream, sample_rate) = output::Output::new(to_gui_tx, from_gui_rx);
     let app = ui::DemoWriterApp::new(to_process_tx, from_process_rx, sample_rate);

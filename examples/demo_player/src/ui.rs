@@ -1,5 +1,5 @@
 use eframe::{egui, epi};
-use rt_audio_disk_stream::{Decoder, ReadDiskStream, ReadStreamOptions, SymphoniaDecoder};
+use creek::{Decoder, ReadDiskStream, ReadStreamOptions, SymphoniaDecoder};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
@@ -88,7 +88,7 @@ impl DemoPlayerApp {
             })
             .unwrap();
 
-        let (frame_close_tx, frame_close_rx) = RingBuffer::new(1).split();
+        let (frame_close_tx, frame_close_rx) = RingBuffer::new(1);
 
         Self {
             playing: false,

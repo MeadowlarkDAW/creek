@@ -1,10 +1,10 @@
 [package]
-name = "rt-audio-disk-stream-core"
+name = "creek-core"
 version = "0.1.0"
-authors = ["Billy Messenger <BillyDM@protonmail.com>"]
+authors = ["Billy Messenger <BillyDM@tutamail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rtrb = "0.1.2"
+rtrb = "0.2"

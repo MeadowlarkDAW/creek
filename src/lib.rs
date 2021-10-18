@@ -1,7 +1,7 @@
-pub use rt_audio_disk_stream_core::*;
+pub use creek_core::*;
 
 #[cfg(feature = "decode-wav-only")]
-pub use rt_audio_disk_stream_decode_wav::*;
+pub use creek_decode_wav::*;
 
 #[cfg(feature = "encode-wav")]
-pub use rt_audio_disk_stream_encode_wav::*;
+pub use creek_encode_wav::*;

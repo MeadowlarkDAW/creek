@@ -4,7 +4,7 @@ use std::{
     io::{Seek, SeekFrom, Write},
 };
 
-use rt_audio_disk_stream_core::{write, Encoder, FileInfo, WriteBlock, WriteStatus};
+use creek_core::{write, Encoder, FileInfo, WriteBlock, WriteStatus};
 
 pub mod error;
 mod header;

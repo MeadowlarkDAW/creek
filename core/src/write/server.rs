@@ -34,7 +34,7 @@ impl<E: Encoder> WriteServer<E> {
         additional_opts: E::AdditionalOpts,
     ) -> Result<FileInfo<E::FileParams>, E::OpenError> {
         let (mut open_tx, mut open_rx) =
-            RingBuffer::<Result<FileInfo<E::FileParams>, E::OpenError>>::new(1).split();
+            RingBuffer::<Result<FileInfo<E::FileParams>, E::OpenError>>::new(1);
 
         std::thread::spawn(move || {
             match E::new(

@@ -52,13 +52,13 @@ impl<E: Encoder> WriteDiskStream<E> {
             .unwrap_or((stream_opts.num_write_blocks * 4) + 8);
 
         let (to_server_tx, from_client_rx) =
-            RingBuffer::<ClientToServerMsg<E>>::new(msg_channel_size).split();
+            RingBuffer::<ClientToServerMsg<E>>::new(msg_channel_size);
         let (to_client_tx, from_server_rx) =
-            RingBuffer::<ServerToClientMsg<E>>::new(msg_channel_size).split();
+            RingBuffer::<ServerToClientMsg<E>>::new(msg_channel_size);
 
         // Create dedicated close signal.
         let (close_signal_tx, close_signal_rx) =
-            RingBuffer::<Option<HeapData<E::T>>>::new(1).split();
+            RingBuffer::<Option<HeapData<E::T>>>::new(1);
 
         let file: PathBuf = file.into();
 
@@ -227,7 +227,7 @@ impl<E: Encoder> WriteDiskStream<E> {
 
                     // Copy into first block.
                     for (buffer_ch, write_ch) in buffer.iter().zip(current_block.block.iter_mut()) {
-                        &mut write_ch[current_block.written_frames..]
+                        write_ch[current_block.written_frames..]
                             .copy_from_slice(&buffer_ch[0..first_len]);
                     }
                     current_block.written_frames = self.block_size;
@@ -242,7 +242,7 @@ impl<E: Encoder> WriteDiskStream<E> {
 
                     // Copy the remaining data into the second block.
                     for (buffer_ch, write_ch) in buffer.iter().zip(next_block.block.iter_mut()) {
-                        &mut write_ch[0..second_len].copy_from_slice(&buffer_ch[first_len..]);
+                        write_ch[0..second_len].copy_from_slice(&buffer_ch[first_len..]);
                     }
                     next_block.written_frames = second_len;
 
@@ -257,7 +257,7 @@ impl<E: Encoder> WriteDiskStream<E> {
                     let end = current_block.written_frames + buffer_len;
 
                     for (buffer_ch, write_ch) in buffer.iter().zip(current_block.block.iter_mut()) {
-                        &mut write_ch[current_block.written_frames..end].copy_from_slice(buffer_ch);
+                        write_ch[current_block.written_frames..end].copy_from_slice(buffer_ch);
                     }
                     current_block.written_frames = end;
 

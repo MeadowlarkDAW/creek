@@ -1,14 +1,14 @@
 [package]
-name = "rt-audio-disk-stream"
-version = "0.0.0"
-authors = ["Billy Messenger <BillyDM@protonmail.com>"]
+name = "creek"
+version = "0.1.0"
+authors = ["Billy Messenger <BillyDM@tutamail.com>"]
 edition = "2018"
-license = "GPL-3"
+license = "MIT OR Apache-2.0"
 keywords = ["audio", "io", "disk", "stream"]
 categories = ["multimedia::audio"]
-description = "Realtime disk streaming IO for audio (placeholder)"
-documentation = "https://docs.rs/rt-audio-disk-stream"
-repository = "https://github.com/RustyDAW/rt-audio-disk-stream"
+description = "Realtime-safe disk streaming to/from audio files" 
+documentation = "https://docs.rs/creek"
+repository = "https://github.com/RustyDAW/creek"
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -24,12 +24,12 @@ members = [
 
 [features]
 default = ["decode-wav-only", "encode-wav"]
-decode-wav-only = ["rt-audio-disk-stream-decode-wav"]
+decode-wav-only = ["creek-decode-wav"]
 decode-open-source = []
 decode-all = []
-encode-wav = ["rt-audio-disk-stream-encode-wav"]
+encode-wav = ["creek-encode-wav"]
 
 [dependencies]
-rt-audio-disk-stream-core = { path = "core" }
-rt-audio-disk-stream-decode-wav = { path = "decode_wav", optional = true }
-rt-audio-disk-stream-encode-wav = { path = "encode_wav", optional = true }
+creek-core = { path = "core" }
+creek-decode-wav = { path = "decode_wav", optional = true }
+creek-encode-wav = { path = "encode_wav", optional = true }

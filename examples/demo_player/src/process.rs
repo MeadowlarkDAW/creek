@@ -1,5 +1,5 @@
-use rt_audio_disk_stream::read::ReadError;
-use rt_audio_disk_stream::{Decoder, ReadDiskStream, SeekMode, SymphoniaDecoder};
+use creek::read::ReadError;
+use creek::{Decoder, ReadDiskStream, SeekMode, SymphoniaDecoder};
 use rtrb::{Consumer, Producer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};

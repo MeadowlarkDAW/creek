@@ -1,4 +1,4 @@
-# 🏞️ Creek 🏞️
+# 🏞️ creek 🏞️
 [![Documentation](https://docs.rs/creek/badge.svg)](https://docs.rs/creek)
 [![Crates.io](https://img.shields.io/crates/v/creek.svg)](https://crates.io/crates/creek)
 [![License](https://img.shields.io/crates/l/creek.svg)](https://github.com/RustyDAW/creek/blob/main/COPYRIGHT)

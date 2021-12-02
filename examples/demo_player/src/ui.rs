@@ -32,6 +32,7 @@ impl DemoPlayerApp {
     pub fn new(
         mut to_player_tx: Producer<GuiToProcessMsg>,
         from_player_rx: Consumer<ProcessToGuiMsg>,
+        file_path: std::path::PathBuf
     ) -> Self {
         // Setup read stream -------------------------------------------------------------
 
@@ -57,8 +58,7 @@ impl DemoPlayerApp {
 
         // Open the read stream.
         let mut read_stream =
-            ReadDiskStream::<SymphoniaDecoder>::new("./test_files/wav_i24_stereo.wav", 0, opts)
-                .unwrap();
+            ReadDiskStream::<SymphoniaDecoder>::new(file_path, 0, opts).unwrap();
 
         // Cache the start of the file into cache with index `0`.
         let _ = read_stream.cache(0, 0);

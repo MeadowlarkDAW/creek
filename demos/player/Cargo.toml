@@ -1,5 +1,5 @@
 [package]
-name = "demo_player"
+name = "player"
 version = "0.1.0"
 authors = ["Billy Messenger <BillyDM@protonmail.com>"]
 edition = "2018"

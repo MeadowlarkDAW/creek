@@ -17,6 +17,7 @@ pub struct Process {
     from_gui_rx: Consumer<GuiToProcessMsg>,
 
     playback_state: PlaybackState,
+    had_cache_miss_last_cycle: bool,
 
     loop_start: usize,
     loop_end: usize,
@@ -35,6 +36,7 @@ impl Process {
             from_gui_rx,
 
             playback_state: PlaybackState::Paused,
+            had_cache_miss_last_cycle: false,
 
             loop_start: 0,
             loop_end: 0,
@@ -121,9 +123,11 @@ impl Process {
             }
         }
 
+        let mut cache_missed_this_cycle = false;
         if let Some(read_disk_stream) = &mut self.read_disk_stream {
             // Update client and check if it is ready.
             if !read_disk_stream.is_ready()? {
+                cache_missed_this_cycle = true;
                 // Warn UI of buffering.
                 let _ = self.to_gui_tx.push(ProcessToGuiMsg::Buffering);
 
@@ -212,6 +216,17 @@ impl Process {
             silence(data);
         }
 
+        // When the cache misses, the buffer is filled with silence. So the next
+        // buffer after the cache miss is starting from silence. To avoid an audible
+        // pop, apply a ramping gain from 0 up to unity.
+        if self.had_cache_miss_last_cycle {
+            let buffer_size = data.len() as f32;
+            for (i, sample) in data.iter_mut().enumerate() {
+                *sample *= i as f32 / buffer_size;
+            }
+        }
+
+        self.had_cache_miss_last_cycle = cache_missed_this_cycle;
         Ok(())
     }
 }

@@ -36,3 +36,7 @@ encode-wav = ["creek-encode-wav"]
 creek-core = { version = "0.1", path = "core" }
 creek-decode-wav = { version = "0.1.0", path = "decode_wav", optional = true }
 creek-encode-wav = { version = "0.1.0", path = "encode_wav", optional = true }
+
+# Unoptimized builds result in prominent gaps of silence after cache misses in the demo player.
+[profile.dev]
+opt-level = 2

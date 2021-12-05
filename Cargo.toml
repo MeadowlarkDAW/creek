@@ -19,22 +19,41 @@ exclude = [
 [workspace]
 members = [
     "core",
-    "decode_wav",
+    "decode_symphonia",
     "encode_wav",
     "demos/player",
     "demos/writer",
 ]
 
 [features]
-default = ["decode-wav-only", "encode-wav"]
-decode-wav-only = ["creek-decode-wav"]
+default = ["decode", "encode-wav"]
+decode = [ "creek-decode-symphonia" ]
+# Not yet working https://github.com/RustyDAW/creek/pull/6#issuecomment-988491582
+#decode-aac = [ "creek-decode-symphonia/aac" ]
+decode-flac = [ "creek-decode-symphonia/flac" ]
+decode-mp3 =  [ "creek-decode-symphonia/mp3" ]
+decode-pcm = [ "creek-decode-symphonia/pcm" ]
+# Not yet working https://github.com/RustyDAW/creek/pull/6#issuecomment-988491582
+#decode-isomp4 = [ "creek-decode-symphonia/isomp4" ]
+decode-ogg = [ "creek-decode-symphonia/ogg" ]
+decode-vorbis = [ "creek-decode-symphonia/vorbis" ]
+decode-wav = [ "creek-decode-symphonia/wav" ]
 decode-open-source = []
-decode-all = []
+decode-all = [
+  #"decode-aac",
+  "decode-flac",
+  "decode-mp3",
+  "decode-pcm",
+  #"decode-isomp4",
+  "decode-ogg",
+  "decode-vorbis",
+  "decode-wav"
+]
 encode-wav = ["creek-encode-wav"]
 
 [dependencies]
 creek-core = { version = "0.1", path = "core" }
-creek-decode-wav = { version = "0.1.0", path = "decode_wav", optional = true }
+creek-decode-symphonia = { version = "0.1.0", path = "decode_symphonia", optional = true }
 creek-encode-wav = { version = "0.1.0", path = "encode_wav", optional = true }
 
 # Unoptimized builds result in prominent gaps of silence after cache misses in the demo player.

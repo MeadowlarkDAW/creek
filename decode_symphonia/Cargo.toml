@@ -1,12 +1,12 @@
 [package]
-name = "creek-decode-wav"
+name = "creek-decode-symphonia"
 version = "0.1.0"
 authors = ["Billy Messenger <BillyDM@tutamail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
 keywords = ["audio", "io", "disk", "stream"]
 categories = ["multimedia::audio"]
-description = "WAV file decoding for creek" 
+description = "Audio file decoding for creek"
 documentation = "https://docs.rs/creek-decode-wav"
 repository = "https://github.com/RustyDAW/creek"
 
@@ -15,4 +15,14 @@ repository = "https://github.com/RustyDAW/creek"
 
 [dependencies]
 creek-core = { version = "0.1", path = "../core" }
-symphonia = { version = "0.4", default-features = false, features=["wav", "pcm"] }
+symphonia = "0.4"
+
+[features]
+#aac = [ "symphonia/aac" ]
+flac = [ "symphonia/flac" ]
+mp3 =  [ "symphonia/mp3" ]
+pcm = [ "symphonia/pcm" ]
+#isomp4 = [ "symphonia/isomp4" ]
+ogg = [ "symphonia/ogg" ]
+vorbis = [ "symphonia/vorbis" ]
+wav = [ "symphonia/wav" ]

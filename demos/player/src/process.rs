@@ -161,31 +161,31 @@ impl Process {
                 let read_data = read_disk_stream.read(read_frames)?;
 
                 playhead += read_data.num_frames();
-                if playhead >= loop_end {
-                    // Copy up to the end of the loop.
-                    let to_end_of_loop = read_data.num_frames() - (playhead - loop_end);
-
-                    if read_data.num_channels() == 1 {
-                        let ch = read_data.read_channel(0);
-
-                        for i in 0..to_end_of_loop {
-                            data[i * 2] = ch[i];
-                            data[(i * 2) + 1] = ch[i];
-                        }
-                    } else if read_data.num_channels() == 2 {
-                        let ch1 = read_data.read_channel(0);
-                        let ch2 = read_data.read_channel(1);
-
-                        for i in 0..to_end_of_loop {
-                            data[i * 2] = ch1[i];
-                            data[(i * 2) + 1] = ch2[i];
-                        }
-                    }
-
-                    read_disk_stream.seek(self.loop_start, SeekMode::Auto)?;
-
-                    data = &mut data[to_end_of_loop * 2..];
-                } else {
+//                 if playhead >= loop_end {
+//                     // Copy up to the end of the loop.
+//                     let to_end_of_loop = read_data.num_frames() - (playhead - loop_end);
+//
+//                     if read_data.num_channels() == 1 {
+//                         let ch = read_data.read_channel(0);
+//
+//                         for i in 0..to_end_of_loop {
+//                             data[i * 2] = ch[i];
+//                             data[(i * 2) + 1] = ch[i];
+//                         }
+//                     } else if read_data.num_channels() == 2 {
+//                         let ch1 = read_data.read_channel(0);
+//                         let ch2 = read_data.read_channel(1);
+//
+//                         for i in 0..to_end_of_loop {
+//                             data[i * 2] = ch1[i];
+//                             data[(i * 2) + 1] = ch2[i];
+//                         }
+//                     }
+//
+//                     read_disk_stream.seek(self.loop_start, SeekMode::Auto)?;
+//
+//                     data = &mut data[to_end_of_loop * 2..];
+//                 } else {
                     // Else copy all the read data.
                     if read_data.num_channels() == 1 {
                         let ch = read_data.read_channel(0);
@@ -205,7 +205,7 @@ impl Process {
                     }
 
                     data = &mut data[read_data.num_frames() * 2..];
-                }
+//                 }
             }
 
             let _ = self

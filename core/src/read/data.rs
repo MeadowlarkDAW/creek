@@ -4,7 +4,7 @@ pub struct DataBlock<T: Copy + Clone + Default + Send> {
 }
 
 impl<T: Copy + Clone + Default + Send> DataBlock<T> {
-    pub(crate) fn new(num_channels: usize, block_size: usize) -> Self {
+    pub fn new(num_channels: usize, block_size: usize) -> Self {
         let mut block: Vec<Vec<T>> = Vec::with_capacity(num_channels);
         for _ in 0..num_channels {
             let mut data: Vec<T> = Vec::with_capacity(block_size);

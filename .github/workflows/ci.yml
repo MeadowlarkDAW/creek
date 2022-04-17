@@ -12,63 +12,6 @@ env:
   RUSTFLAGS: -Dwarnings
 
 jobs:
-  fmt:
-    name: Rustfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - run: rustup component add rustfmt
-      - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
-      - uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
-
-  run_clippy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-            toolchain: stable
-            components: clippy
-            override: true
-      - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
-      - uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --workspace --tests --examples
-
-  docs:
-    name: Rust doc comments
-    runs-on: ubuntu-latest
-    env:
-      RUSTDOCFLAGS: -Dwarnings
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-      - name: Install rust stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          components: rust-docs
-          override: true
-      - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v1
-      - name: Rustdoc
-        uses: actions-rs/cargo@v1
-        with:
-          command: doc
-          args: --document-private-items --no-deps
-
   build_and_test:
     name: Build and test
     strategy:
@@ -77,19 +20,17 @@ jobs:
           # Currently used Rust version, same as in `rust-toolchain` file.
           - os: ubuntu-latest
             rust: 1.60.0
-          - os: windows-latest
-            rust: 1.60.0
 
           # Minimum Supported Rust Version = 1.56.0
           #
-          # Minimum Supported Python Version = 3.7
-          # This is the minimum version for which manylinux Python wheels are
-          # built.
           - os: ubuntu-latest
             rust: 1.56.0
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@master
+
+    - name: Install alsa
+      run: apt install alsa
 
     - name: Install ${{ matrix.rust }}
       uses: actions-rs/toolchain@v1

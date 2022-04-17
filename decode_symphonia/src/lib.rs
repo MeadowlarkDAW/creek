@@ -387,7 +387,6 @@ mod tests {
 
 
         let (mut decoder, file_info) = decoder.unwrap();
-        println!("{:?}", file_info.num_frames);
 
         let mut data_block = DataBlock::new(1, block_size);
         unsafe {
@@ -400,7 +399,7 @@ mod tests {
 
         let first_frame = [
             0.0,
-            0.046873,
+            0.046875,
             0.09375,
             0.1484375,
             0.1953125,
@@ -435,7 +434,7 @@ mod tests {
 
         let samples = &mut data_block.block[0];
         for i in 0..samples.len() {
-            assert!(approx_eq!(f32, second_frame[i], samples[i], ulps = 2));
+            assert_approx_eq!(f32, second_frame[i], samples[i], ulps = 2);
         }
 
         let last_frame = [
@@ -459,7 +458,7 @@ mod tests {
         }
         let samples = &mut data_block.block[0];
         for i in 0..samples.len() {
-            assert!(approx_eq!(f32, last_frame[i], samples[i], ulps = 2));
+            assert_approx_eq!(f32, last_frame[i], samples[i], ulps = 2);
         }
 
         assert_eq!(decoder.current_frame, file_info.num_frames - 1);

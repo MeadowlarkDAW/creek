@@ -30,7 +30,7 @@ jobs:
     - uses: actions/checkout@master
 
     - name: Install alsa
-      run: apt install alsa
+      run: sudo apt install alsa
 
     - name: Install ${{ matrix.rust }}
       uses: actions-rs/toolchain@v1

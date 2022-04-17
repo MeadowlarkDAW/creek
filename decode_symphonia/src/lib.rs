@@ -341,23 +341,24 @@ impl Drop for SymphoniaDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use float_cmp::*;
 
     #[test]
     fn decoder_new() {
         let files = vec![
             //  file | num_channels | num_frames | sample_rate
-            ("./test_files/wav_u8_mono.wav", 1, 1323000, Some(44100)),
-            ("./test_files/wav_i16_mono.wav", 1, 1323000, Some(44100)),
-            ("./test_files/wav_i24_mono.wav", 1, 1323000, Some(44100)),
-            ("./test_files/wav_i32_mono.wav", 1, 1323000, Some(44100)),
-            ("./test_files/wav_f32_mono.wav", 1, 1323000, Some(44100)),
-            ("./test_files/wav_i24_stereo.wav", 2, 1323000, Some(44100)),
-            //"./test_files/ogg_mono.ogg",
-            //"./test_files/ogg_stereo.ogg",
-            //"./test_files/mp3_constant_mono.mp3",
-            //"./test_files/mp3_constant_stereo.mp3",
-            //"./test_files/mp3_variable_mono.mp3",
-            //"./test_files/mp3_variable_stereo.mp3",
+            ("../test_files/wav_u8_mono.wav", 1, 1323000, Some(44100)),
+            ("../test_files/wav_i16_mono.wav", 1, 1323000, Some(44100)),
+            ("../test_files/wav_i24_mono.wav", 1, 1323000, Some(44100)),
+            ("../test_files/wav_i32_mono.wav", 1, 1323000, Some(44100)),
+            ("../test_files/wav_f32_mono.wav", 1, 1323000, Some(44100)),
+            ("../test_files/wav_i24_stereo.wav", 2, 1323000, Some(44100)),
+            //"../test_files/ogg_mono.ogg",
+            //"../test_files/ogg_stereo.ogg",
+            //"../test_files/mp3_constant_mono.mp3",
+            //"../test_files/mp3_constant_stereo.mp3",
+            //"../test_files/mp3_variable_mono.mp3",
+            //"../test_files/mp3_variable_stereo.mp3",
         ];
 
         for file in files {
@@ -375,5 +376,92 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn decode_first_frame() {
+        let block_size = 10;
+        
+        let decoder =
+            SymphoniaDecoder::new("../test_files/wav_u8_mono.wav".into(), 0, block_size, ());
+
+
+        let (mut decoder, file_info) = decoder.unwrap();
+        println!("{:?}", file_info.num_frames);
+
+        let mut data_block = DataBlock::new(1, block_size);
+        unsafe {
+            decoder.decode(&mut data_block).unwrap();
+        }
+
+        let samples = &mut data_block.block[0];
+        assert_eq!(samples.len(), block_size);
+
+
+        let first_frame = [
+            0.0,
+            0.046875,
+            0.09375,
+            0.1484375,
+            0.1953125,
+            0.2421875,
+            0.2890625,
+            0.3359375,
+            0.3828125,
+            0.421875
+        ];
+
+
+        for i in 0..samples.len() {
+            assert!(approx_eq!(f32, first_frame[i], samples[i], ulps = 2));
+        }
+
+        let second_frame = [
+            0.46875,
+            0.5078125,
+            0.5390625,
+            0.578125,
+            0.609375,
+            0.640625,
+            0.671875,
+            0.6953125,
+            0.71875,
+            0.7421875,
+        ];
+
+        unsafe {
+            decoder.decode(&mut data_block).unwrap();
+        }
+
+        let samples = &mut data_block.block[0];
+        for i in 0..samples.len() {
+            assert!(approx_eq!(f32, second_frame[i], samples[i], ulps = 2));
+        }
+
+        let last_frame = [
+            -0.0625,
+            -0.046875,
+            -0.0234375,
+            -0.0078125,
+            0.015625,
+            0.03125,
+            0.046875,
+            0.0625,
+            0.078125,
+            0.0859375,
+        ];
+
+        // Seek to last frame
+        decoder.seek(file_info.num_frames - 1 - block_size).unwrap();
+
+        unsafe {
+            decoder.decode(&mut data_block).unwrap();
+        }
+        let samples = &mut data_block.block[0];
+        for i in 0..samples.len() {
+            assert!(approx_eq!(f32, last_frame[i], samples[i], ulps = 2));
+        }
+
+        assert_eq!(decoder.current_frame, file_info.num_frames - 1);
     }
 }

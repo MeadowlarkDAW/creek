@@ -104,7 +104,7 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: check
-        args: --all --bins --examples --tests --features repl --benches
+        args: --all --bins --examples --tests --features decode-all
 
     - name: tests
       uses: actions-rs/cargo@v1

@@ -10,7 +10,7 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::core::units::Duration;
 
-use creek_core::{DataBlock, Decoder, FileInfo};
+use creek_core::{DataBlock, Decoder, FileInfo, DecoderReadDirection};
 
 mod error;
 pub use error::OpenError;
@@ -29,6 +29,7 @@ pub struct SymphoniaDecoder {
 
     current_frame: usize,
     reset_smp_buffer: bool,
+    direction: DecoderReadDirection
 }
 
 impl Decoder for SymphoniaDecoder {
@@ -159,9 +160,15 @@ impl Decoder for SymphoniaDecoder {
 
                 current_frame: start_frame,
                 reset_smp_buffer: false,
+                direction: DecoderReadDirection::Forward,
             },
             file_info,
         ))
+    }
+
+
+    fn direction(&mut self, direction: DecoderReadDirection) {
+        self.direction = direction;
     }
 
     fn seek(&mut self, frame: usize) -> Result<(), Self::FatalError> {
@@ -235,12 +242,17 @@ impl Decoder for SymphoniaDecoder {
             if num_frames_to_cpy != 0 {
                 if self.num_channels == 1 {
                     // Mono, no need to deinterleave.
-                    data_block.block[0][block_start..block_start + num_frames_to_cpy]
-                        .copy_from_slice(
-                            &self.smp_buf.samples()
-                                [self.curr_smp_buf_i..self.curr_smp_buf_i + num_frames_to_cpy],
-                        );
-                } else if self.num_channels == 2 {
+                    let smp_buf = &self.smp_buf.samples()
+                        [self.curr_smp_buf_i..self.curr_smp_buf_i + num_frames_to_cpy];
+
+                    let block = &mut data_block.block[0][block_start..block_start + num_frames_to_cpy];
+                    for i in 0..num_frames_to_cpy {
+                        block[i] = match self.direction {
+                            DecoderReadDirection::Forward => smp_buf[i],
+                            DecoderReadDirection::Backward => smp_buf[num_frames_to_cpy - 1 - i]
+                        }
+                    }
+               } else if self.num_channels == 2 {
                     // Provide efficient stereo deinterleaving.
 
                     let smp_buf = &self.smp_buf.samples()
@@ -251,8 +263,16 @@ impl Decoder for SymphoniaDecoder {
                     let block2 = &mut block2[0][block_start..block_start + num_frames_to_cpy];
 
                     for i in 0..num_frames_to_cpy {
-                        block1[i] = smp_buf[i * 2];
-                        block2[i] = smp_buf[(i * 2) + 1];
+                        match self.direction {
+                            DecoderReadDirection::Forward => {
+                                block1[i] = smp_buf[i * 2];
+                                block2[i] =  smp_buf[(i * 2) + 1];
+                            },
+                            DecoderReadDirection::Backward => {
+                                block1[i] = smp_buf[(num_frames_to_cpy - 1 - i) * 2];
+                                block2[i] =  smp_buf[((num_frames_to_cpy - 1 - i) * 2) + 1];
+                            }
+                        };
                     }
                 } else {
                     let smp_buf = &self.smp_buf.samples()[self.curr_smp_buf_i
@@ -260,17 +280,35 @@ impl Decoder for SymphoniaDecoder {
 
                     for i in 0..num_frames_to_cpy {
                         for (ch, block) in data_block.block.iter_mut().enumerate() {
-                            block[block_start + i] = smp_buf[(i * self.num_channels) + ch];
+                            match self.direction {
+                                DecoderReadDirection::Forward => {
+                                    block[block_start + i] = smp_buf[(i * self.num_channels) + ch];
+                                },
+                                DecoderReadDirection::Backward => {
+                                    block[block_start + i] = smp_buf[((num_frames_to_cpy - 1 - i) * self.num_channels) + ch];
+                                }
+                            };
                         }
                     }
                 }
 
                 block_start += num_frames_to_cpy;
 
-                self.curr_smp_buf_i += num_frames_to_cpy * self.num_channels;
-                if self.curr_smp_buf_i >= self.smp_buf.len() {
-                    self.reset_smp_buffer = true;
-                }
+                self.curr_smp_buf_i = match self.direction {
+                    DecoderReadDirection::Forward => {
+                        if self.curr_smp_buf_i >= self.smp_buf.len() {
+                            self.reset_smp_buffer = true;
+                        }
+                        self.curr_smp_buf_i + num_frames_to_cpy * self.num_channels
+                    },
+                    DecoderReadDirection::Backward => {
+                        if self.curr_smp_buf_i <= 0 {
+                            self.reset_smp_buffer = true;
+                        }
+                        self.curr_smp_buf_i.checked_sub(1).unwrap_or(0).checked_sub(num_frames_to_cpy * self.num_channels).unwrap_or(0)
+                    }
+                };
+
             } else {
                 // Decode more packets.
 
@@ -319,9 +357,16 @@ impl Decoder for SymphoniaDecoder {
         }
 
         if reached_end_of_file {
-            self.current_frame = self.num_frames;
+            self.current_frame = match self.direction {
+                DecoderReadDirection::Forward => self.num_frames,
+                DecoderReadDirection::Backward => 0,
+            };
         } else {
-            self.current_frame += self.block_size;
+            self.current_frame = match self.direction {
+                DecoderReadDirection::Forward => (self.current_frame + self.block_size).min(self.num_frames - 1),
+                DecoderReadDirection::Backward => self.current_frame.checked_sub(self.block_size).unwrap_or(0).max(0)
+                
+            };
         }
 
         Ok(())
@@ -462,5 +507,47 @@ mod tests {
         }
 
         assert_eq!(decoder.current_frame, file_info.num_frames - 1);
+    }
+
+    #[test]
+    fn decode_first_frame_direction_backward() {
+        let block_size = 10;
+        
+        let decoder =
+            SymphoniaDecoder::new("../test_files/wav_u8_mono.wav".into(), 0, block_size, ());
+
+
+        let (mut decoder, _) = decoder.unwrap();
+
+        decoder.direction(DecoderReadDirection::Backward);
+
+        let mut data_block = DataBlock::new(1, block_size);
+        unsafe {
+            decoder.decode(&mut data_block).unwrap();
+        }
+
+        let samples = &mut data_block.block[0];
+        assert_eq!(samples.len(), block_size);
+
+
+        let mut first_frame = [
+            0.0,
+            0.046875,
+            0.09375,
+            0.1484375,
+            0.1953125,
+            0.2421875,
+            0.2890625,
+            0.3359375,
+            0.3828125,
+            0.421875
+        ];
+
+        first_frame.reverse();
+
+
+        for i in 0..samples.len() {
+            assert!(approx_eq!(f32, first_frame[i], samples[i], ulps = 2));
+        }
     }
 }

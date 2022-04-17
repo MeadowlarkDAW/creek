@@ -4,6 +4,11 @@ use std::{error::Error, fmt::Debug};
 use super::DataBlock;
 use crate::FileInfo;
 
+pub enum DecoderReadDirection {
+    Forward,
+    Backward
+}
+
 /// A type that decodes a file in a read stream.
 pub trait Decoder: Sized + 'static {
     /// The data type of a single sample. (i.e. `f32`)
@@ -47,6 +52,9 @@ pub trait Decoder: Sized + 'static {
         block_size: usize,
         additional_opts: Self::AdditionalOpts,
     ) -> Result<(Self, FileInfo<Self::FileParams>), Self::OpenError>;
+
+    /// Change the read direction. This allows reverse playback.
+    fn direction(&mut self, direction: DecoderReadDirection);
 
     /// Seek to a frame in the file. If a frame lies outside of the end of the file,
     /// set the read position the end of the file instead of returning an error.

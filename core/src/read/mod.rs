@@ -6,7 +6,7 @@ mod server;
 pub mod error;
 
 pub use data::{DataBlock, ReadData};
-pub use decoder::Decoder;
+pub use decoder::{Decoder, DecoderReadDirection};
 pub use error::{FatalReadError, ReadError};
 pub use read_stream::{ReadDiskStream, SeekMode};
 

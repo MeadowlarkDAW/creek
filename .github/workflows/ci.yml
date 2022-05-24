@@ -8,9 +8,6 @@ on:
       - staging
       - trying
 
-env:
-  RUSTFLAGS: -Dwarnings
-
 jobs:
   build_and_test:
     name: Build and test
@@ -30,7 +27,7 @@ jobs:
     - uses: actions/checkout@master
 
     - name: Install alsa
-      run: sudo apt install alsa alsa-lib
+      run: sudo apt install alsa libasound2-dev
 
     - name: Install ${{ matrix.rust }}
       uses: actions-rs/toolchain@v1
@@ -45,10 +42,10 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: check
-        args: --all --bins --examples --tests --features decode-all
+        args: -p creek-core -p creek-decode-symphonia -p creek-encode-wav --tests --features decode-all
 
     - name: tests
       uses: actions-rs/cargo@v1
       with:
         command: test
-        args: --all
+        args: -p creek-core -p creek-decode-symphonia -p creek-encode-wav

@@ -751,8 +751,6 @@ impl<D: Decoder> ReadDiskStream<D> {
 
         // Check if the end of the file was reached.
         if self.playhead() >= self.file_info.num_frames {
-            self.current_block_start_frame = 0;
-            self.current_frame_in_block = 0;
             return Err(ReadError::EndOfFile);
         }
         let mut reached_end_of_file = false;

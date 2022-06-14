@@ -118,5 +118,5 @@ write_disk_stream.write(
 - A basic [`writer app`] that records a tone to a wav file.
 
 [`Symphonia`]: https://github.com/pdeljanov/Symphonia
-[`looping demo player`]: https://github.com/RustyDAW/rt-audio-disk-stream/tree/main/examples/demo_player
-[`writer app`]: https://github.com/RustyDAW/rt-audio-disk-stream/tree/main/examples/demo_writer
+[`looping demo player`]: https://github.com/MeadowlarkDAW/creek/tree/main/examples/demo_player
+[`writer app`]: https://github.com/MeadowlarkDAW/creek/tree/main/examples/demo_writer

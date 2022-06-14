@@ -1,6 +1,6 @@
 [package]
 name = "creek"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Billy Messenger <BillyDM@tutamail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -8,7 +8,7 @@ keywords = ["audio", "io", "disk", "stream"]
 categories = ["multimedia::audio"]
 description = "Realtime-safe disk streaming to/from audio files" 
 documentation = "https://docs.rs/creek"
-repository = "https://github.com/RustyDAW/creek"
+repository = "https://github.com/MeadowlarkDAW/creek"
 readme = "README.md"
 exclude = [
     "test_files/*",
@@ -28,13 +28,13 @@ members = [
 [features]
 default = ["decode", "encode-wav"]
 decode = [ "creek-decode-symphonia" ]
-# Not yet working https://github.com/RustyDAW/creek/pull/6#issuecomment-988491582
+# Not yet working https://github.com/MeadowlarkDAW/creek/pull/6#issuecomment-988491582
 #decode-aac = [ "creek-decode-symphonia/aac" ]
 #decode-alac = [ "creek-decode-symphonia/alac" ]
 decode-flac = [ "creek-decode-symphonia/flac" ]
 decode-mp3 =  [ "creek-decode-symphonia/mp3" ]
 decode-pcm = [ "creek-decode-symphonia/pcm" ]
-# Not yet working https://github.com/RustyDAW/creek/pull/6#issuecomment-988491582
+# Not yet working https://github.com/MeadowlarkDAW/creek/pull/6#issuecomment-988491582
 #decode-isomp4 = [ "creek-decode-symphonia/isomp4" ]
 decode-ogg = [ "creek-decode-symphonia/ogg" ]
 decode-vorbis = [ "creek-decode-symphonia/vorbis" ]

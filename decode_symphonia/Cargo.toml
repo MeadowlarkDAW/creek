@@ -18,7 +18,7 @@ creek-core = { version = "0.1", path = "../core" }
 symphonia = "0.5"
 
 [dev-dependencies]
-float-cmp = "*"
+float-cmp = "0.9"
 
 [features]
 #aac = [ "symphonia/aac" ]

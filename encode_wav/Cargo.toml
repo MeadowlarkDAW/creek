@@ -1,6 +1,6 @@
 [package]
 name = "creek-encode-wav"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Billy Messenger <BillyDM@tutamail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -13,5 +13,5 @@ repository = "https://github.com/RustyDAW/creek"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-creek-core = { version = "0.1", path = "../core" }
+creek-core = { path = "../core" }
 byte-slice-cast = "1.0.0"

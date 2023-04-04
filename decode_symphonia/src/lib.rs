@@ -119,6 +119,7 @@ impl Decoder for SymphoniaDecoder {
                     if let Some(channels) = channels {
                         debug_assert_eq!(channels, spec.channels);
                     } else {
+                        // FIXME: Replace println!() with log::debug!()
                         println!(
                             "Assuming {num_channels} channel(s) according to the first decoded packet",
                             num_channels = spec.channels.count()

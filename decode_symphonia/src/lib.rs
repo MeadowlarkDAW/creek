@@ -6,7 +6,7 @@ use symphonia::core::codecs::{CodecParameters, Decoder as SymphDecoder, DecoderO
 use symphonia::core::errors::Error;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
 use symphonia::core::io::MediaSourceStream;
-use symphonia::core::meta::MetadataOptions;
+use symphonia::core::meta::{Metadata, MetadataOptions, MetadataRevision};
 use symphonia::core::probe::Hint;
 use symphonia::core::units::Duration;
 
@@ -33,7 +33,7 @@ pub struct SymphoniaDecoder {
 
 impl Decoder for SymphoniaDecoder {
     type T = f32;
-    type FileParams = CodecParameters;
+    type FileParams = SymphoniaDecoderInfo;
     type OpenError = OpenError;
     type FatalError = Error;
     type AdditionalOpts = ();
@@ -98,7 +98,7 @@ impl Decoder for SymphoniaDecoder {
                 SeekTo::Time {
                     time: seconds.into(),
                     track_id: None,
-                }
+                },
             )?;
         }
 
@@ -137,13 +137,17 @@ impl Decoder for SymphoniaDecoder {
             }
         };
 
+        let metadata = reader.metadata().skip_to_latest().cloned();
+        let info = SymphoniaDecoderInfo {
+            codec_params: params,
+            metadata,
+        };
         let file_info = FileInfo {
-            params,
+            params: info,
             num_frames,
             num_channels: num_channels as u16,
             sample_rate: sample_rate.map(|s| s as u32),
         };
-
         Ok((
             Self {
                 reader,
@@ -181,7 +185,7 @@ impl Decoder for SymphoniaDecoder {
             SeekTo::Time {
                 time: seconds.into(),
                 track_id: None,
-            }
+            },
         ) {
             Ok(_res) => {}
             Err(e) => {
@@ -338,6 +342,27 @@ impl Drop for SymphoniaDecoder {
     }
 }
 
+impl SymphoniaDecoder {
+    /// Symphonia does metadata oddly. This is more for raw access.
+    ///
+    /// See [`Metadata`](https://docs.rs/symphonia-core/0.5.2/symphonia_core/meta/struct.Metadata.html).
+    pub fn get_metadata_raw(&mut self) -> Metadata<'_> {
+        self.reader.metadata()
+    }
+
+    /// Get the latest entry in the metadata.
+    pub fn get_metadata(&mut self) -> Option<MetadataRevision> {
+        let mut md = self.reader.metadata();
+        md.skip_to_latest().cloned()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SymphoniaDecoderInfo {
+    pub codec_params: CodecParameters,
+    pub metadata: Option<MetadataRevision>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,10 +406,9 @@ mod tests {
     #[test]
     fn decode_first_frame() {
         let block_size = 10;
-        
+
         let decoder =
             SymphoniaDecoder::new("../test_files/wav_u8_mono.wav".into(), 0, block_size, ());
-
 
         let (mut decoder, file_info) = decoder.unwrap();
 
@@ -396,36 +420,18 @@ mod tests {
         let samples = &mut data_block.block[0];
         assert_eq!(samples.len(), block_size);
 
-
         let first_frame = [
-            0.0,
-            0.046875,
-            0.09375,
-            0.1484375,
-            0.1953125,
-            0.2421875,
-            0.2890625,
-            0.3359375,
-            0.3828125,
-            0.421875
+            0.0, 0.046875, 0.09375, 0.1484375, 0.1953125, 0.2421875, 0.2890625, 0.3359375,
+            0.3828125, 0.421875,
         ];
-
 
         for i in 0..samples.len() {
             assert!(approx_eq!(f32, first_frame[i], samples[i], ulps = 2));
         }
 
         let second_frame = [
-            0.46875,
-            0.5078125,
-            0.5390625,
-            0.578125,
-            0.609375,
-            0.640625,
-            0.671875,
-            0.6953125,
-            0.71875,
-            0.7421875,
+            0.46875, 0.5078125, 0.5390625, 0.578125, 0.609375, 0.640625, 0.671875, 0.6953125,
+            0.71875, 0.7421875,
         ];
 
         unsafe {
@@ -438,16 +444,8 @@ mod tests {
         }
 
         let last_frame = [
-            -0.0625,
-            -0.046875,
-            -0.0234375,
-            -0.0078125,
-            0.015625,
-            0.03125,
-            0.046875,
-            0.0625,
-            0.078125,
-            0.0859375,
+            -0.0625, -0.046875, -0.0234375, -0.0078125, 0.015625, 0.03125, 0.046875, 0.0625,
+            0.078125, 0.0859375,
         ];
 
         // Seek to last frame

@@ -1,8 +1,8 @@
 [package]
 name = "creek"
-version = "0.2.3"
+version = "1.0.0"
 authors = ["Billy Messenger <BillyDM@tutamail.com>"]
-edition = "2018"
+edition = "2021"
 license = "MIT OR Apache-2.0"
 keywords = ["audio", "io", "disk", "stream"]
 categories = ["multimedia::audio"]

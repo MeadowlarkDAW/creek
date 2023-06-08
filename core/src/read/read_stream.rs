@@ -92,8 +92,7 @@ impl<D: Decoder> ReadDiskStream<D> {
             RingBuffer::<ServerToClientMsg<D>>::new(msg_channel_size);
 
         // Create dedicated close signal.
-        let (close_signal_tx, close_signal_rx) =
-            RingBuffer::<Option<HeapData<D::T>>>::new(1);
+        let (close_signal_tx, close_signal_rx) = RingBuffer::<Option<HeapData<D::T>>>::new(1);
 
         let file: PathBuf = file.into();
 

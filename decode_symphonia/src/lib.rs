@@ -83,9 +83,7 @@ impl Decoder for SymphoniaDecoder {
 
             stream.codec_params.clone()
         };
-
         let num_frames = params.n_frames.ok_or_else(|| OpenError::NoNumFrames)? as usize;
-        let num_channels = (params.channels.ok_or_else(|| OpenError::NoNumChannels)?).count();
         let sample_rate = params.sample_rate;
 
         // Seek the reader to the requested position.
@@ -103,6 +101,14 @@ impl Decoder for SymphoniaDecoder {
 
         // Create a decoder for the stream.
         let mut decoder = symphonia::default::get_codecs().make(&params, &decoder_opts)?;
+        debug_assert_eq!(params.n_frames, decoder.codec_params().n_frames);
+        debug_assert_eq!(params.sample_rate, decoder.codec_params().sample_rate);
+        debug_assert_eq!(params.channels, decoder.codec_params().channels);
+
+        // The stream/decoder might not always provide the actual numbers
+        // of channels (MP4/AAC/ALAC). In this case the number of channels
+        // will be obtained from the signal spec of the first decoded packet.
+        let mut channels = params.channels;
 
         // Decode the first packet to get the signal specification.
         let smp_buf = loop {
@@ -110,6 +116,15 @@ impl Decoder for SymphoniaDecoder {
                 Ok(decoded) => {
                     // Get the buffer spec.
                     let spec = *decoded.spec();
+                    if let Some(channels) = channels {
+                        debug_assert_eq!(channels, spec.channels);
+                    } else {
+                        println!(
+                            "Assuming {num_channels} channel(s) according to the first decoded packet",
+                            num_channels = spec.channels.count()
+                        );
+                        channels = Some(spec.channels);
+                    }
 
                     // Get the buffer capacity.
                     let capacity = decoded.capacity() as u64;
@@ -141,6 +156,8 @@ impl Decoder for SymphoniaDecoder {
             codec_params: params,
             metadata,
         };
+        let num_channels = (channels.ok_or_else(|| OpenError::NoNumChannels)?).count();
+
         let file_info = FileInfo {
             params: info,
             num_frames,

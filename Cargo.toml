@@ -33,25 +33,23 @@ members = [
 [features]
 default = ["decode", "encode-wav"]
 decode = [ "creek-decode-symphonia" ]
-# Not yet working https://github.com/MeadowlarkDAW/creek/pull/6#issuecomment-988491582
-#decode-aac = [ "creek-decode-symphonia/aac" ]
-#decode-alac = [ "creek-decode-symphonia/alac" ]
+decode-aac = [ "creek-decode-symphonia/aac" ]
+decode-alac = [ "creek-decode-symphonia/alac" ]
 decode-flac = [ "creek-decode-symphonia/flac" ]
 decode-mp3 =  [ "creek-decode-symphonia/mp3" ]
 decode-pcm = [ "creek-decode-symphonia/pcm" ]
-# Not yet working https://github.com/MeadowlarkDAW/creek/pull/6#issuecomment-988491582
-#decode-isomp4 = [ "creek-decode-symphonia/isomp4" ]
+decode-isomp4 = [ "creek-decode-symphonia/isomp4" ]
 decode-ogg = [ "creek-decode-symphonia/ogg" ]
 decode-vorbis = [ "creek-decode-symphonia/vorbis" ]
 decode-wav = [ "creek-decode-symphonia/wav" ]
 decode-open-source = []
 decode-all = [
-  #"decode-aac",
-  #"decode-alac",
+  "decode-aac",
+  "decode-alac",
   "decode-flac",
   "decode-mp3",
   "decode-pcm",
-  #"decode-isomp4",
+  "decode-isomp4",
   "decode-ogg",
   "decode-vorbis",
   "decode-wav"

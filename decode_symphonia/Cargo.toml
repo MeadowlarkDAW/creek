@@ -21,12 +21,12 @@ symphonia = "0.5"
 float-cmp = "0.9"
 
 [features]
-#aac = [ "symphonia/aac" ]
-#alac = [ "symphonia/alac" ]
+aac = [ "symphonia/aac" ]
+alac = [ "symphonia/alac" ]
 flac = [ "symphonia/flac" ]
 mp3 =  [ "symphonia/mp3" ]
 pcm = [ "symphonia/pcm" ]
-#isomp4 = [ "symphonia/isomp4" ]
+isomp4 = [ "symphonia/isomp4" ]
 ogg = [ "symphonia/ogg" ]
 vorbis = [ "symphonia/vorbis" ]
 wav = [ "symphonia/wav" ]

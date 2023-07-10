@@ -6,7 +6,7 @@ edition = "2018"
 license = "MIT OR Apache-2.0"
 keywords = ["audio", "io", "disk", "stream"]
 categories = ["multimedia::audio"]
-description = "WAV file encoding for creek" 
+description = "WAV file encoding for creek"
 documentation = "https://docs.rs/creek-decode-wav"
 repository = "https://github.com/RustyDAW/creek"
 

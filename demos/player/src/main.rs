@@ -21,7 +21,8 @@ pub enum ProcessToGuiMsg {
 }
 
 fn main() {
-    let cli_arg = std::env::args().nth(1)
+    let cli_arg = std::env::args()
+        .nth(1)
         .unwrap_or("./test_files/wav_i24_stereo.wav".to_string());
     let file_path = std::path::PathBuf::from(cli_arg);
 

@@ -21,33 +21,33 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-    - name: Install dependencies
-      run: sudo apt install alsa libasound2-dev libxcb-shape0-dev libxcb-xfixes0-dev
+      - name: Install dependencies
+        run: sudo apt install alsa libasound2-dev libxcb-shape0-dev libxcb-xfixes0-dev
 
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@master
-      with:
-        # We have to use `master` and pass the toolchain explicitly
-        toolchain: ${{ matrix.rust }}
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          # We have to use `master` and pass the toolchain explicitly
+          toolchain: ${{ matrix.rust }}
 
-    - name: Check out repository
-      uses: actions/checkout@v3
+      - name: Check out repository
+        uses: actions/checkout@v3
 
-    - name: Generate Cargo.lock
-      run: cargo generate-lockfile
+      - name: Generate Cargo.lock
+        run: cargo generate-lockfile
 
-    - name: Cache Rust toolchain and build artifacts
-      uses: Swatinem/rust-cache@v2
-      with:
-        # Distinguished by the action name to avoid sharing!
-        # The cache is automatically keyed by the relevant matrix properties.
-        shared-key: "ci"
+      - name: Cache Rust toolchain and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Distinguished by the action name to avoid sharing!
+          # The cache is automatically keyed by the relevant matrix properties.
+          shared-key: "ci"
 
-    - name: Check workspace build
-      run: cargo check --locked --workspace --tests --features decode-all
+      - name: Check workspace build
+        run: cargo check --locked --workspace --tests --features decode-all
 
-    - name: Build tests
-      run: cargo test --locked --all-targets --no-run
+      - name: Build tests
+        run: cargo test --locked --all-targets --no-run
 
-    - name: Run tests
-      run: cargo test --locked --all-targets -- --nocapture --quiet
+      - name: Run tests
+        run: cargo test --locked --all-targets -- --nocapture --quiet

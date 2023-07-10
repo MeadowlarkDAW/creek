@@ -25,6 +25,8 @@ pub(crate) struct ReadServer<D: Decoder> {
 }
 
 impl<D: Decoder> ReadServer<D> {
+    #[allow(clippy::new_ret_no_self)] // TODO: Rename to `spawn` (breaking API change)
+    #[allow(clippy::too_many_arguments)] // TODO: Reduce number of arguments
     pub(crate) fn new(
         file: PathBuf,
         start_frame: usize,
@@ -77,6 +79,7 @@ impl<D: Decoder> ReadServer<D> {
     }
 
     fn run(mut self) {
+        #[allow(clippy::type_complexity)] // TODO: Use a dedicated type for the elements
         let mut cache_requests: Vec<(usize, Option<DataBlockCache<D::T>>, usize)> = Vec::new();
 
         while self.run {

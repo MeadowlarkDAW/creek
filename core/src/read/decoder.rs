@@ -58,8 +58,9 @@ pub trait Decoder: Sized + 'static {
     /// If the end of the file is reached, fill data up to the end of the file, then set the
     /// read position to the last frame in the file and do nothing.
     ///
-    /// ## Unsafe
-    /// This is marked as "unsafe" because a `data_block` may be uninitialized, causing
+    /// # Safety
+    ///
+    /// This is marked as `unsafe` because a `data_block` may be uninitialized, causing
     /// undefined behavior if data is not filled into the block. It is your responsibility to
     /// always fill the block (unless the end of the file is reached, in which case the server
     /// will tell the client to not read data past that frame).

@@ -51,19 +51,13 @@ impl Process {
             return;
         }
 
-        match self.try_process(data) {
-            Ok(_) => {}
-            Err(e) => {
-                match e {
-                    ReadError::FatalError(_) => {
-                        self.fatal_error = true;
-                    }
-                    _ => {}
-                }
-
-                println!("{:?}", e);
-                silence(data);
+        if let Err(e) = self.try_process(data) {
+            if matches!(e, ReadError::FatalError(_)) {
+                self.fatal_error = true;
             }
+
+            println!("{:?}", e);
+            silence(data);
         }
     }
 
@@ -170,7 +164,7 @@ impl Process {
 
                         for i in 0..to_end_of_loop {
                             data[i * 2] = ch[i];
-                            data[(i * 2) + 1] = ch[i];
+                            data[i * 2 + 1] = ch[i];
                         }
                     } else if read_data.num_channels() == 2 {
                         let ch1 = read_data.read_channel(0);
@@ -178,7 +172,7 @@ impl Process {
 
                         for i in 0..to_end_of_loop {
                             data[i * 2] = ch1[i];
-                            data[(i * 2) + 1] = ch2[i];
+                            data[i * 2 + 1] = ch2[i];
                         }
                     }
 
@@ -192,7 +186,7 @@ impl Process {
 
                         for i in 0..read_data.num_frames() {
                             data[i * 2] = ch[i];
-                            data[(i * 2) + 1] = ch[i];
+                            data[i * 2 + 1] = ch[i];
                         }
                     } else if read_data.num_channels() == 2 {
                         let ch1 = read_data.read_channel(0);
@@ -200,7 +194,7 @@ impl Process {
 
                         for i in 0..read_data.num_frames() {
                             data[i * 2] = ch1[i];
-                            data[(i * 2) + 1] = ch2[i];
+                            data[i * 2 + 1] = ch2[i];
                         }
                     }
 

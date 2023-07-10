@@ -8,7 +8,6 @@ use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{Metadata, MetadataOptions, MetadataRevision};
 use symphonia::core::probe::Hint;
-use symphonia::core::units::Duration;
 
 use creek_core::{DataBlock, Decoder, FileInfo};
 
@@ -113,7 +112,7 @@ impl Decoder for SymphoniaDecoder {
                     let spec = *decoded.spec();
 
                     // Get the buffer capacity.
-                    let capacity = Duration::from(decoded.capacity() as u64);
+                    let capacity = decoded.capacity() as u64;
 
                     let mut smp_buf = SampleBuffer::<f32>::new(capacity, spec);
 
@@ -146,7 +145,7 @@ impl Decoder for SymphoniaDecoder {
             params: info,
             num_frames,
             num_channels: num_channels as u16,
-            sample_rate: sample_rate.map(|s| s as u32),
+            sample_rate,
         };
         Ok((
             Self {
@@ -256,7 +255,7 @@ impl Decoder for SymphoniaDecoder {
 
                     for i in 0..num_frames_to_cpy {
                         block1[i] = smp_buf[i * 2];
-                        block2[i] = smp_buf[(i * 2) + 1];
+                        block2[i] = smp_buf[i * 2 + 1];
                     }
                 } else {
                     let smp_buf = &self.smp_buf.samples()[self.curr_smp_buf_i
@@ -264,7 +263,7 @@ impl Decoder for SymphoniaDecoder {
 
                     for i in 0..num_frames_to_cpy {
                         for (ch, block) in data_block.block.iter_mut().enumerate() {
-                            block[block_start + i] = smp_buf[(i * self.num_channels) + ch];
+                            block[block_start + i] = smp_buf[i * self.num_channels + ch];
                         }
                     }
                 }

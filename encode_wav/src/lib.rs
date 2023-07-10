@@ -67,7 +67,7 @@ impl Format {
 
 #[derive(Clone)]
 pub struct Params {
-    format: Format,
+    _format: Format,
 }
 
 pub struct WavEncoder<B: WavBitDepth + 'static> {
@@ -117,6 +117,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
         let buf_len = usize::from(num_channels) * block_size;
         let mut interleave_buf: Vec<B::T> = Vec::with_capacity(buf_len);
         // Safe because data will always be written to before it is read.
+        #[allow(clippy::uninit_vec)] // TODO
         unsafe {
             interleave_buf.set_len(buf_len);
         }
@@ -142,7 +143,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                 num_frames: 0,
                 num_channels,
                 sample_rate: Some(sample_rate),
-                params: Params { format },
+                params: Params { _format: format },
             },
         ))
     }
@@ -167,8 +168,8 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                     assert!(written_frames * 2 <= self.interleave_buf.len());
 
                     for frame in 0..written_frames {
-                        self.interleave_buf[(frame * 2)] = write_block.block()[0][frame];
-                        self.interleave_buf[(frame * 2) + 1] = write_block.block()[1][frame];
+                        self.interleave_buf[frame * 2] = write_block.block()[0][frame];
+                        self.interleave_buf[frame * 2 + 1] = write_block.block()[1][frame];
                     }
                 } else {
                     // Hint to compiler to optimize loop
@@ -179,7 +180,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
 
                     for frame in 0..written_frames {
                         for (ch, block) in write_block.block().iter().enumerate() {
-                            self.interleave_buf[(frame * self.num_channels) + ch] = block[frame];
+                            self.interleave_buf[frame * self.num_channels + ch] = block[frame];
                         }
                     }
                 }

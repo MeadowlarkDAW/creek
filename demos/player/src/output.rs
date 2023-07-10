@@ -7,6 +7,7 @@ use crate::{GuiToProcessMsg, ProcessToGuiMsg};
 pub struct Output;
 
 impl Output {
+    #[allow(clippy::new_ret_no_self)] // TODO: Rename?
     pub fn new(
         to_gui_tx: Producer<ProcessToGuiMsg>,
         from_gui_rx: Consumer<GuiToProcessMsg>,

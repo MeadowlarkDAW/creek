@@ -5,6 +5,7 @@ mod output;
 mod process;
 mod ui;
 
+#[allow(clippy::large_enum_variant)]
 pub enum GuiToProcessMsg {
     UseStream(ReadDiskStream<SymphoniaDecoder>),
     SetLoop { start: usize, end: usize },

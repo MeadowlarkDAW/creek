@@ -6,14 +6,14 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 keywords = ["audio", "io", "disk", "stream"]
 categories = ["multimedia::audio"]
-description = "Realtime-safe disk streaming to/from audio files" 
+description = "Realtime-safe disk streaming to/from audio files"
 documentation = "https://docs.rs/creek"
 repository = "https://github.com/MeadowlarkDAW/creek"
 readme = "README.md"
 exclude = [
     "test_files/*",
 ]
-rust-version = "1.56"
+rust-version = "1.60"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

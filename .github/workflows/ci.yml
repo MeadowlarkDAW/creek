@@ -17,9 +17,9 @@ jobs:
           - os: ubuntu-latest
             rust: stable
 
-          # Minimum Supported Rust Version
+          # Minimum Supported Rust Version (MSRV)
           - os: ubuntu-latest
-            rust: 1.56.0
+            rust: 1.60.0
             cargo-options: --locked
 
     runs-on: ${{ matrix.os }}

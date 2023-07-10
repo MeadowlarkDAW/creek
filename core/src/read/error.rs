@@ -5,14 +5,14 @@ use std::error::Error;
 pub enum FatalReadError<FatalDecoderError: Error> {
     /// The stream is closed and thus cannot continue.
     StreamClosed,
-    /// A fatal decoder error occured. The stream cannot continue.
+    /// A fatal decoder error occurred. The stream cannot continue.
     DecoderError(FatalDecoderError),
 }
 
 /// An error reading the file.
 #[derive(Debug)]
 pub enum ReadError<FatalDecoderError: Error> {
-    /// A fatal error occured. The stream cannot continue.
+    /// A fatal error occurred. The stream cannot continue.
     FatalError(FatalReadError<FatalDecoderError>),
     /// The end of the file was reached. The stream must be seeked to
     /// an earlier position to continue reading data. Until then, output

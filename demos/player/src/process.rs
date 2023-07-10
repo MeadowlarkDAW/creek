@@ -212,7 +212,7 @@ impl Process {
                 .to_gui_tx
                 .push(ProcessToGuiMsg::PlaybackPos(read_disk_stream.playhead()));
         } else {
-            // Output silence until file is recieved.
+            // Output silence until file is received.
             silence(data);
         }
 

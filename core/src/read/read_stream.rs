@@ -522,25 +522,25 @@ impl<D: Decoder> ReadDiskStream<D> {
         if let Some(cache_index) = heap.prefetch_buffer[self.current_block_index].use_cache_index {
             // This check should never fail because it can only be `None` in the destructor.
             if heap.caches[cache_index].cache.is_none() {
-                // Cache has not been recieved yet.
+                // Cache has not been received yet.
                 return Ok(false);
             }
         } else if heap.prefetch_buffer[self.current_block_index]
             .block
             .is_none()
         {
-            // Block has not been recieved yet.
+            // Block has not been received yet.
             return Ok(false);
         }
 
         if let Some(cache_index) = heap.prefetch_buffer[self.next_block_index].use_cache_index {
             // This check should never fail because it can only be `None` in the destructor.
             if heap.caches[cache_index].cache.is_none() {
-                // Cache has not been recieved yet.
+                // Cache has not been received yet.
                 return Ok(false);
             }
         } else if heap.prefetch_buffer[self.next_block_index].block.is_none() {
-            // Block has not been recieved yet.
+            // Block has not been received yet.
             return Ok(false);
         }
 

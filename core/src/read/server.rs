@@ -204,7 +204,7 @@ impl<D: Decoder> ReadServer<D> {
                     wanted_start_frame: start_frame,
                 });
 
-                // If any new messages have been recieved while caching, prioritize those
+                // If any new messages have been received while caching, prioritize those
                 // over filling any additional caches.
                 if !self.from_client_rx.is_empty() {
                     do_sleep = false;

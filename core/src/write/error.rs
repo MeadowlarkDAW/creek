@@ -5,14 +5,14 @@ use std::error::Error;
 pub enum FatalWriteError<FatalEncoderError: Error> {
     /// The stream is closed and thus cannot continue.
     StreamClosed,
-    /// A fatal encoder error occured. The stream cannot continue.
+    /// A fatal encoder error occurred. The stream cannot continue.
     EncoderError(FatalEncoderError),
 }
 
 /// An error writing the file.
 #[derive(Debug)]
 pub enum WriteError<FatalEncoderError: Error> {
-    /// A fatal error occured. The stream cannot continue.
+    /// A fatal error occurred. The stream cannot continue.
     FatalError(FatalWriteError<FatalEncoderError>),
     /// There are no more blocks left in the buffer because the server was
     /// too slow writing previous ones. Make sure there are enough write blocks

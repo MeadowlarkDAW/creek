@@ -17,9 +17,10 @@ use crate::{FileInfo, SERVER_WAIT_TIME};
 /// playback temporarily.
 ///
 /// [`ReadDiskStream`]: struct.ReadDiskStream.html
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SeekMode {
     /// Automatically search for a suitable cache to use. This is the default mode.
+    #[default]
     Auto,
     /// Only try one cache with the given index. If you already know a suitable cache,
     /// this can be more performant than searching each cache individually.
@@ -31,12 +32,6 @@ pub enum SeekMode {
     /// Seek without searching for a suitable cache. This **will** cause the stream
     /// to buffer.
     NoCache,
-}
-
-impl Default for SeekMode {
-    fn default() -> Self {
-        SeekMode::Auto
-    }
 }
 
 /// A realtime-safe disk-streaming reader of audio files.
@@ -125,6 +120,7 @@ impl<D: Decoder> ReadDiskStream<D> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)] // TODO: Reduce number of arguments
     pub(crate) fn create(
         to_server_tx: Producer<ClientToServerMsg<D>>,
         from_server_rx: Consumer<ServerToClientMsg<D>>,
@@ -399,9 +395,8 @@ impl<D: Decoder> ReadDiskStream<D> {
 
         if found_cache.is_none() {
             let auto_search = match seek_mode {
-                SeekMode::Auto => true,
-                SeekMode::TryOneThenAuto(_) => true,
-                _ => false,
+                SeekMode::Auto | SeekMode::TryOneThenAuto(_) => true,
+                SeekMode::NoCache | SeekMode::TryOne(_) => false,
             };
 
             if auto_search {
@@ -803,9 +798,7 @@ impl<D: Decoder> ReadDiskStream<D> {
                         read_buffer_part.copy_from_slice(from_buffer_part);
                     } else {
                         // Output silence.
-                        for i in 0..first_len {
-                            read_buffer_part[i] = Default::default();
-                        }
+                        read_buffer_part[..first_len].fill_with(Default::default);
                     };
                 }
 
@@ -854,9 +847,7 @@ impl<D: Decoder> ReadDiskStream<D> {
                         read_buffer_part.copy_from_slice(from_buffer_part);
                     } else {
                         // Output silence.
-                        for i in 0..second_len {
-                            read_buffer_part[i] = Default::default();
-                        }
+                        read_buffer_part[..second_len].fill_with(Default::default);
                     };
                 }
 
@@ -902,9 +893,7 @@ impl<D: Decoder> ReadDiskStream<D> {
                         read_buffer_part.copy_from_slice(from_buffer_part);
                     } else {
                         // Output silence.
-                        for i in 0..frames {
-                            read_buffer_part[i] = Default::default();
-                        }
+                        read_buffer_part[..frames].fill_with(Default::default);
                     };
                 }
             }

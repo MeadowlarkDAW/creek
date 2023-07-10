@@ -66,20 +66,14 @@ impl Process {
     }
 
     pub fn process(&mut self, data: &mut [f32]) {
-        match self.try_process(data) {
-            Ok(_) => {}
-            Err(e) => {
-                match e {
-                    WriteError::FatalError(_) => {
-                        self.fatal_error = true;
-                        let _ = self.to_gui_tx.push(ProcessToGuiMsg::FatalError);
-                    }
-                    _ => {}
-                }
-
-                println!("{:?}", e);
-                silence(data);
+        if let Err(e) = self.try_process(data) {
+            if matches!(e, WriteError::FatalError(_)) {
+                self.fatal_error = true;
+                let _ = self.to_gui_tx.push(ProcessToGuiMsg::FatalError);
             }
+
+            println!("{:?}", e);
+            silence(data);
         }
     }
 
@@ -217,8 +211,8 @@ impl Process {
 
             // Copy data into output.
             for i in 0..num_frames {
-                data[(i * 2)] = self.f32_buffer[i];
-                data[(i * 2) + 1] = self.f32_buffer[i];
+                data[i * 2] = self.f32_buffer[i];
+                data[i * 2 + 1] = self.f32_buffer[i];
             }
 
             // Send data to be written to file.

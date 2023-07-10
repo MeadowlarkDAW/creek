@@ -4,12 +4,18 @@ pub struct DataBlock<T: Copy + Clone + Default + Send> {
 }
 
 impl<T: Copy + Clone + Default + Send> DataBlock<T> {
+    /// # Safety
+    ///
+    /// Using an allocated but uninitialized [`Vec`] is safe because the block data
+    /// will be always filled before it is sent to be read by the client.
     pub fn new(num_channels: usize, block_size: usize) -> Self {
         let mut block: Vec<Vec<T>> = Vec::with_capacity(num_channels);
         for _ in 0..num_channels {
             let mut data: Vec<T> = Vec::with_capacity(block_size);
-            // Safe because block will be always filled before it is sent to be read by the client.
-            unsafe { data.set_len(block_size) };
+            #[allow(clippy::uninit_vec)] // TODO
+            unsafe {
+                data.set_len(block_size)
+            };
             block.push(data);
         }
 

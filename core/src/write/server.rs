@@ -22,6 +22,8 @@ pub(crate) struct WriteServer<E: Encoder> {
 }
 
 impl<E: Encoder> WriteServer<E> {
+    #[allow(clippy::new_ret_no_self)] // TODO: Rename to `spawn` (breaking API change)
+    #[allow(clippy::too_many_arguments)] // TODO: Reduce number of arguments
     pub fn new(
         file: PathBuf,
         num_write_blocks: usize,
@@ -96,13 +98,10 @@ impl<E: Encoder> WriteServer<E> {
 
                             match write_res {
                                 Ok(status) => {
-                                    match status {
-                                        WriteStatus::ReachedMaxSize { num_files } => {
-                                            self.send_msg(ServerToClientMsg::ReachedMaxSize {
-                                                num_files,
-                                            });
-                                        }
-                                        _ => {}
+                                    if let WriteStatus::ReachedMaxSize { num_files } = status {
+                                        self.send_msg(ServerToClientMsg::ReachedMaxSize {
+                                            num_files,
+                                        });
                                     }
 
                                     // Clear and send block to be re-used by client.

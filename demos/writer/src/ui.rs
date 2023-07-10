@@ -71,7 +71,7 @@ impl epi::App for DemoWriterApp {
                     std::thread::sleep(std::time::Duration::from_secs_f64(1.0 / 60.0));
 
                     // Check if app has closed.
-                    if let Ok(_) = frame_close_rx.pop() {
+                    if frame_close_rx.pop().is_ok() {
                         break;
                     }
 

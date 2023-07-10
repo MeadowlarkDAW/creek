@@ -127,7 +127,7 @@ impl epi::App for DemoPlayerApp {
                     std::thread::sleep(std::time::Duration::from_secs_f64(1.0 / 60.0));
 
                     // Check if app has closed.
-                    if let Ok(_) = frame_close_rx.pop() {
+                    if frame_close_rx.pop().is_ok() {
                         break;
                     }
 
@@ -179,27 +179,27 @@ impl epi::App for DemoPlayerApp {
             let mut loop_end = self.loop_end;
             ui.add(egui::Slider::usize(&mut loop_start, 0..=self.num_frames).text("loop start"));
             ui.add(egui::Slider::usize(&mut loop_end, 0..=self.num_frames).text("loop end"));
-            if loop_start != self.loop_start || loop_end != self.loop_end {
-                if ui.input().pointer.any_released() || ui.input().key_pressed(egui::Key::Enter) {
-                    if loop_end <= loop_start {
-                        if loop_start == self.num_frames {
-                            loop_start = self.num_frames - 1;
-                            loop_end = self.num_frames;
-                        } else {
-                            loop_end = loop_start + 1;
-                        }
-                    };
+            if (loop_start != self.loop_start || loop_end != self.loop_end)
+                && (ui.input().pointer.any_released() || ui.input().key_pressed(egui::Key::Enter))
+            {
+                if loop_end <= loop_start {
+                    if loop_start == self.num_frames {
+                        loop_start = self.num_frames - 1;
+                        loop_end = self.num_frames;
+                    } else {
+                        loop_end = loop_start + 1;
+                    }
+                };
 
-                    self.loop_start = loop_start;
-                    self.loop_end = loop_end;
+                self.loop_start = loop_start;
+                self.loop_end = loop_end;
 
-                    self.to_player_tx
-                        .push(GuiToProcessMsg::SetLoop {
-                            start: loop_start,
-                            end: loop_end,
-                        })
-                        .unwrap();
-                }
+                self.to_player_tx
+                    .push(GuiToProcessMsg::SetLoop {
+                        start: loop_start,
+                        end: loop_end,
+                    })
+                    .unwrap();
             }
 
             if self.buffering_anim > 0 {

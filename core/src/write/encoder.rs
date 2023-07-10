@@ -73,8 +73,9 @@ pub trait Encoder: Sized + 'static {
     /// This helper function `num_files_to_file_name_extension()` can be used to find
     /// this extension.
     ///
-    /// ## Unsafe
-    /// This is marked as "unsafe" because a `data_block` may be uninitialized, causing
+    /// # Safety
+    ///
+    /// This is marked as `unsafe` because a `data_block` may be uninitialized, causing
     /// undefined behavior if unwritten data from the block is read. Please use the value
     /// from `write_block.num_frames()` to know how many frames in the block are valid.
     /// (valid frames are from `[0..num_frames]`)

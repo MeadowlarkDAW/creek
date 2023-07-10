@@ -123,3 +123,15 @@ write_disk_stream.write(
 
 [`looping demo player`]: https://github.com/MeadowlarkDAW/creek/tree/main/demos/player
 [`writer app`]: https://github.com/MeadowlarkDAW/creek/tree/main/demos/writer
+
+## Contributing
+
+We use various [pre-commit](https://pre-commit.com) hooks to ensure that the code style and formatting
+is consistent.
+
+Follow the [installation instructions](https://pre-commit.com/#install) on how to set up _pre-commit_ for your development system. This allows you to run the checks locally before committing code
+and waiting for the CI results:
+
+```sh
+pre-commit run --all-files
+```

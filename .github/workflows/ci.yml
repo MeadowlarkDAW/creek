@@ -4,9 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - master
-      - staging
-      - trying
+      - main
 
 jobs:
   build_and_test:

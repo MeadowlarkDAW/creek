@@ -57,8 +57,7 @@ impl<E: Encoder> WriteDiskStream<E> {
             RingBuffer::<ServerToClientMsg<E>>::new(msg_channel_size);
 
         // Create dedicated close signal.
-        let (close_signal_tx, close_signal_rx) =
-            RingBuffer::<Option<HeapData<E::T>>>::new(1);
+        let (close_signal_tx, close_signal_rx) = RingBuffer::<Option<HeapData<E::T>>>::new(1);
 
         let file: PathBuf = file.into();
 

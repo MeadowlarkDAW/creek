@@ -1,4 +1,5 @@
 # 🏞️ creek 🏞️
+
 [![Documentation](https://docs.rs/creek/badge.svg)](https://docs.rs/creek)
 [![Crates.io](https://img.shields.io/crates/v/creek.svg)](https://crates.io/crates/creek)
 [![License](https://img.shields.io/crates/l/creek.svg)](https://github.com/RustyDAW/creek/blob/main/COPYRIGHT)
@@ -26,18 +27,20 @@ This stream automatically spawns an "IO server" that handles the non-realtime sa
 The write stream works how you would expect. Once a block is filled with data, it is sent to the IO server to be written. This block is also recycled back to the stream after writing is done.
 
 ### Codecs (Encode)
-| Codec                        | Status                                          | Default |
-|------------------------------|-------------------------------------------------|---------|
-| Wav                          | :heavy_check_mark: Uncompressed, no channel map | Yes     |
-| FLAC                         | ? Not currently on roadmap                      | No      |
-| MP3                          | ? Not currently on roadmap                      | No      |
-| Opus                         | ? Not currently on roadmap                      | No      |
-| PCM                          | ? Not currently on roadmap                      | No      |
-| Vorbis                       | ? Not currently on roadmap                      | No      |
+
+| Codec  | Status                                          | Default |
+| ------ | ----------------------------------------------- | ------- |
+| Wav    | :heavy_check_mark: Uncompressed, no channel map | Yes     |
+| FLAC   | ? Not currently on roadmap                      | No      |
+| MP3    | ? Not currently on roadmap                      | No      |
+| Opus   | ? Not currently on roadmap                      | No      |
+| PCM    | ? Not currently on roadmap                      | No      |
+| Vorbis | ? Not currently on roadmap                      | No      |
 
 # Examples
 
 ## Simple Usage Example
+
 ```rust
 use creek::{
     SymphoniaDecoder, SeekMode, ReadDiskStream,
@@ -114,9 +117,9 @@ write_disk_stream.write(
 ```
 
 ## Demos
+
 - A basic [`looping demo player`] that plays a single wav file with adjustable loop regions.
 - A basic [`writer app`] that records a tone to a wav file.
 
-[`Symphonia`]: https://github.com/pdeljanov/Symphonia
 [`looping demo player`]: https://github.com/MeadowlarkDAW/creek/tree/main/demos/player
 [`writer app`]: https://github.com/MeadowlarkDAW/creek/tree/main/demos/writer

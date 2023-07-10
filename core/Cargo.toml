@@ -6,7 +6,7 @@ edition = "2018"
 license = "MIT OR Apache-2.0"
 keywords = ["audio", "io", "disk", "stream"]
 categories = ["multimedia::audio"]
-description = "core components for creek" 
+description = "core components for creek"
 documentation = "https://docs.rs/creek-core"
 repository = "https://github.com/RustyDAW/creek"
 

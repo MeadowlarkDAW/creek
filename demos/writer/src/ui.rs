@@ -1,5 +1,5 @@
-use eframe::{egui, epi};
 use creek::{wav_bit_depth, WavEncoder, WriteDiskStream};
+use eframe::{egui, epi};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};

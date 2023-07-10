@@ -26,8 +26,8 @@ jobs:
     steps:
     - uses: actions/checkout@master
 
-    - name: Install alsa
-      run: sudo apt install alsa libasound2-dev
+    - name: Install dependencies
+      run: sudo apt install alsa libasound2-dev libxcb-shape0-dev libxcb-xfixes0-dev
 
     - name: Install ${{ matrix.rust }}
       uses: actions-rs/toolchain@v1

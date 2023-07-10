@@ -18,10 +18,11 @@ jobs:
           - os: ubuntu-latest
             rust: 1.60.0
 
-          # Minimum Supported Rust Version = 1.56.0
-          #
+          # Minimum Supported Rust Version
           - os: ubuntu-latest
             rust: 1.56.0
+            cargo-options: --locked
+
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@master
@@ -42,10 +43,10 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: check
-        args: --workspace --tests --features decode-all
+        args: ${{ matrix.cargo-options }} --workspace --tests --features decode-all
 
     - name: tests
       uses: actions-rs/cargo@v1
       with:
         command: test
-        args: --workspace
+        args: ${{ matrix.cargo-options }} --workspace

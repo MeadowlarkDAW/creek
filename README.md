@@ -6,9 +6,9 @@
 
 Realtime-safe disk streaming to/from audio files using [Symphonia](https://github.com/pdeljanov/Symphonia) to support a variety of codecs. Refer to [Symphonia's documentation](https://docs.rs/symphonia/latest/symphonia/#support) for supported codecs. Symphonia's Cargo features are exposed with the prefix `decode-`, except `aac` and `isomp4` which creek does not work with yet. For example, to enable MP3 decoding in creek, enable the `decode-mp3` feature.
 
-# How the Read Stream Works
+## How the Read Stream Works
 
-<div><img src="how_it_works.svg", alt="how it works"></div>
+![how it works](how_it_works.svg)
 
 The stream has two types of buffers: a `cache` buffer and `look-ahead` buffer.
 
@@ -22,7 +22,7 @@ If a suitable cache is not found (or the cache is not loaded yet), then the `loo
 
 This stream automatically spawns an "IO server" that handles the non-realtime safe operations. This server is automatically closed when the stream is dropped.
 
-# How the Write Stream Works
+## How the Write Stream Works
 
 The write stream works how you would expect. Once a block is filled with data, it is sent to the IO server to be written. This block is also recycled back to the stream after writing is done.
 
@@ -37,9 +37,9 @@ The write stream works how you would expect. Once a block is filled with data, i
 | PCM    | ? Not currently on roadmap                      | No      |
 | Vorbis | ? Not currently on roadmap                      | No      |
 
-# Examples
+## Examples
 
-## Simple Usage Example
+### Simple Usage Example
 
 ```rust
 use creek::{
@@ -116,7 +116,7 @@ write_disk_stream.write(
 ).unwrap();
 ```
 
-## Demos
+### Demos
 
 - A basic [`looping demo player`] that plays a single wav file with adjustable loop regions.
 - A basic [`writer app`] that records a tone to a wav file.

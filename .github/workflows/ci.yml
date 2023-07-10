@@ -42,10 +42,10 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: check
-        args: -p creek-core -p creek-decode-symphonia -p creek-encode-wav --tests --features decode-all
+        args: --workspace --tests --features decode-all
 
     - name: tests
       uses: actions-rs/cargo@v1
       with:
         command: test
-        args: -p creek-core -p creek-decode-symphonia -p creek-encode-wav
+        args: --workspace

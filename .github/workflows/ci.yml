@@ -38,8 +38,12 @@ jobs:
     - name: Generate Cargo.lock
       run: cargo generate-lockfile
 
-    - name: Cache rust cargo artifacts
-      uses: swatinem/rust-cache@v1
+    - name: Cache Rust toolchain and build artifacts
+      uses: Swatinem/rust-cache@v2
+      with:
+        # Distinguished by the action name to avoid sharing!
+        # The cache is automatically keyed by the relevant matrix properties.
+        shared-key: "ci"
 
     - name: check
       uses: actions-rs/cargo@v1

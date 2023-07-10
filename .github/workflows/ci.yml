@@ -14,9 +14,8 @@ jobs:
     strategy:
       matrix:
         include:
-          # Currently used Rust version, same as in `rust-toolchain` file.
           - os: ubuntu-latest
-            rust: 1.60.0
+            rust: stable
 
           # Minimum Supported Rust Version
           - os: ubuntu-latest

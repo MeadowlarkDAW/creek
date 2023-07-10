@@ -3,7 +3,7 @@ use std::time;
 pub mod read;
 pub mod write;
 
-pub use read::{DataBlock, Decoder, ReadDiskStream, ReadStreamOptions, SeekMode};
+pub use read::{DataBlock, Decoder, DecoderReadDirection, ReadDiskStream, ReadStreamOptions, SeekMode};
 pub use write::{Encoder, WriteBlock, WriteDiskStream, WriteStatus, WriteStreamOptions};
 
 const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);

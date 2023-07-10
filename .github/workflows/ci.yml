@@ -14,20 +14,20 @@ jobs:
     strategy:
       matrix:
         include:
-          # Currently used Rust version, same as in `rust-toolchain` file.
           - os: ubuntu-latest
-            rust: 1.60.0
+            rust: stable
 
-          # Minimum Supported Rust Version = 1.56.0
-          #
+          # Minimum Supported Rust Version
           - os: ubuntu-latest
             rust: 1.56.0
+            cargo-options: --locked
+
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@master
 
-    - name: Install alsa
-      run: sudo apt install alsa libasound2-dev
+    - name: Install dependencies
+      run: sudo apt install alsa libasound2-dev libxcb-shape0-dev libxcb-xfixes0-dev
 
     - name: Install ${{ matrix.rust }}
       uses: actions-rs/toolchain@v1
@@ -42,10 +42,10 @@ jobs:
       uses: actions-rs/cargo@v1
       with:
         command: check
-        args: -p creek-core -p creek-decode-symphonia -p creek-encode-wav --tests --features decode-all
+        args: ${{ matrix.cargo-options }} --workspace --tests --features decode-all
 
     - name: tests
       uses: actions-rs/cargo@v1
       with:
         command: test
-        args: -p creek-core -p creek-decode-symphonia -p creek-encode-wav
+        args: ${{ matrix.cargo-options }} --workspace

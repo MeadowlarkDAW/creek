@@ -729,7 +729,10 @@ impl<D: Decoder> ReadDiskStream<D> {
     ///
     /// NOTE: If the number of `frames` exceeds the block size of the decoder, then that block size
     /// will be used instead. This can be retrieved using `ReadDiskStream::block_size()`.
-    pub fn read(&mut self, mut frames: usize) -> Result<ReadData<D::T>, ReadError<D::FatalError>> {
+    pub fn read(
+        &mut self,
+        mut frames: usize,
+    ) -> Result<ReadData<'_, D::T>, ReadError<D::FatalError>> {
         if self.fatal_error {
             return Err(ReadError::FatalError(FatalReadError::StreamClosed));
         }

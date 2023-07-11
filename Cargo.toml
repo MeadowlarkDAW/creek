@@ -10,8 +10,12 @@ description = "Realtime-safe disk streaming to/from audio files"
 documentation = "https://docs.rs/creek"
 repository = "https://github.com/MeadowlarkDAW/creek"
 readme = "README.md"
-exclude = [
-    "test_files/*",
+include = [
+    "src/",
+    "COPYRIGHT",
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "how_it_works.svg",
 ]
 rust-version = "1.62"
 

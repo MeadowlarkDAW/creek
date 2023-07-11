@@ -1,3 +1,9 @@
+#![warn(rust_2018_idioms)]
+#![warn(rust_2021_compatibility)]
+#![warn(clippy::missing_panics_doc)]
+#![warn(clippy::clone_on_ref_ptr)]
+#![deny(trivial_numeric_casts)]
+
 pub use creek_core::*;
 
 #[cfg(feature = "decode")]

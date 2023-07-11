@@ -119,8 +119,7 @@ impl Decoder for SymphoniaDecoder {
                     if let Some(channels) = channels {
                         debug_assert_eq!(channels, spec.channels);
                     } else {
-                        // FIXME: Replace println!() with log::debug!()
-                        println!(
+                        log::debug!(
                             "Assuming {num_channels} channel(s) according to the first decoded packet",
                             num_channels = spec.channels.count()
                         );
@@ -138,11 +137,7 @@ impl Decoder for SymphoniaDecoder {
                 }
                 Err(Error::DecodeError(e)) => {
                     // Decode errors are not fatal. Send a warning and try to decode the next packet.
-
-                    println!("{}", e);
-
-                    // TODO: print warning.
-
+                    log::warn!("{}", e);
                     continue;
                 }
                 Err(e) => {
@@ -307,11 +302,7 @@ impl Decoder for SymphoniaDecoder {
                                 Err(Error::DecodeError(e)) => {
                                     // Decode errors are not fatal. Print a message and try to decode the next packet as
                                     // usual.
-
-                                    println!("{}", e);
-
-                                    // TODO: print warning.
-
+                                    log::warn!("{}", e);
                                     continue;
                                 }
                                 Err(e) => {

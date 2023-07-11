@@ -141,9 +141,10 @@ impl Decoder for SymphoniaDecoder {
 
                     break smp_buf;
                 }
-                Err(Error::DecodeError(e)) => {
-                    // Decode errors are not fatal. Send a warning and try to decode the next packet.
-                    log::warn!("{}", e);
+                Err(Error::DecodeError(err)) => {
+                    // Decode errors are not fatal.
+                    log::warn!("{err}");
+                    // Continue by decoding the next packet.
                     continue;
                 }
                 Err(e) => {
@@ -305,10 +306,10 @@ impl Decoder for SymphoniaDecoder {
                                     self.curr_smp_buf_i = 0;
                                     break;
                                 }
-                                Err(Error::DecodeError(e)) => {
-                                    // Decode errors are not fatal. Print a message and try to decode the next packet as
-                                    // usual.
-                                    log::warn!("{}", e);
+                                Err(Error::DecodeError(err)) => {
+                                    // Decode errors are not fatal.
+                                    log::warn!("{err}");
+                                    // Continue by decoding the next packet.
                                     continue;
                                 }
                                 Err(e) => {

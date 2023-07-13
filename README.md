@@ -135,3 +135,10 @@ and waiting for the CI results:
 ```sh
 pre-commit run --all-files
 ```
+
+### Git
+
+Conventions for working with Git:
+
+- Commits should follow the [seven rules](https://cbea.ms/git-commit/#seven-rules).
+- Versions are tagged with the prefix `v` followed by the crate's version number to match those displayed on the [crates.io](https://crates.io/crates/creek) page.

@@ -5,6 +5,7 @@
 #![deny(trivial_numeric_casts)]
 
 use std::path::PathBuf;
+use std::time::Duration;
 use std::{
     fs::{File, OpenOptions},
     io::{Seek, SeekFrom, Write},
@@ -99,6 +100,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
 
     const DEFAULT_BLOCK_SIZE: usize = 32768;
     const DEFAULT_NUM_WRITE_BLOCKS: usize = 8;
+    const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
     fn new(
         path: PathBuf,
@@ -106,6 +108,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
         sample_rate: u32,
         block_size: usize,
         _num_write_blocks: usize,
+        _poll_interval: Duration,
         _additional_opts: Self::AdditionalOpts,
     ) -> Result<(Self, FileInfo<Self::FileParams>), Self::OpenError> {
         let mut file = OpenOptions::new()

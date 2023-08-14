@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Duration;
 use std::{error::Error, fmt::Debug};
 
 use super::DataBlock;
@@ -37,6 +38,9 @@ pub trait Decoder: Sized + 'static {
     /// case latency scenerio.
     const DEFAULT_NUM_LOOK_AHEAD_BLOCKS: usize;
 
+    /// The default interval for how often the decoder polls for data.
+    const DEFAULT_POLL_INTERVAL: Duration;
+
     /// Open the file and start reading from `start_frame`.
     ///
     /// Please note this algorithm depends on knowing the exact number of frames in a file.
@@ -45,6 +49,7 @@ pub trait Decoder: Sized + 'static {
         file: PathBuf,
         start_frame: usize,
         block_size: usize,
+        poll_interval: Duration,
         additional_opts: Self::AdditionalOpts,
     ) -> Result<(Self, FileInfo<Self::FileParams>), Self::OpenError>;
 

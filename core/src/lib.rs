@@ -4,7 +4,7 @@
 #![warn(clippy::clone_on_ref_ptr)]
 #![deny(trivial_numeric_casts)]
 
-use std::time;
+use std::time::Duration;
 
 pub mod read;
 pub mod write;
@@ -12,7 +12,7 @@ pub mod write;
 pub use read::{DataBlock, Decoder, ReadDiskStream, ReadStreamOptions, SeekMode};
 pub use write::{Encoder, WriteBlock, WriteDiskStream, WriteStatus, WriteStreamOptions};
 
-const SERVER_WAIT_TIME: time::Duration = time::Duration::from_millis(1);
+const BLOCKING_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 /// Info about the file/files.
 #[derive(Clone)]

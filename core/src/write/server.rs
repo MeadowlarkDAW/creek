@@ -1,8 +1,8 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::{FileInfo, SERVER_WAIT_TIME};
+use crate::{FileInfo, BLOCKING_POLL_INTERVAL};
 
 use super::{ClientToServerMsg, Encoder, HeapData, ServerToClientMsg, WriteStatus};
 
@@ -19,6 +19,7 @@ pub(crate) struct WriteServer<E: Encoder> {
 
     run: bool,
     client_closed: bool,
+    poll_interval: Duration,
 }
 
 impl<E: Encoder> WriteServer<E> {
@@ -30,6 +31,7 @@ impl<E: Encoder> WriteServer<E> {
         block_size: usize,
         num_channels: u16,
         sample_rate: u32,
+        poll_interval: Duration,
         to_client_tx: Producer<ServerToClientMsg<E>>,
         from_client_rx: Consumer<ClientToServerMsg<E>>,
         close_signal_rx: Consumer<Option<HeapData<E::T>>>,
@@ -45,6 +47,7 @@ impl<E: Encoder> WriteServer<E> {
                 sample_rate,
                 block_size,
                 num_write_blocks,
+                poll_interval,
                 additional_opts,
             ) {
                 Ok((encoder, file_info)) => {
@@ -61,6 +64,7 @@ impl<E: Encoder> WriteServer<E> {
                         fatal_error: false,
                         run: true,
                         client_closed: false,
+                        poll_interval,
                     });
                 }
                 Err(e) => {
@@ -75,7 +79,7 @@ impl<E: Encoder> WriteServer<E> {
                 return res;
             }
 
-            std::thread::sleep(SERVER_WAIT_TIME);
+            std::thread::sleep(BLOCKING_POLL_INTERVAL);
         }
     }
 
@@ -179,7 +183,7 @@ impl<E: Encoder> WriteServer<E> {
             }
 
             if do_sleep {
-                std::thread::sleep(SERVER_WAIT_TIME);
+                std::thread::sleep(self.poll_interval);
             }
         }
 
@@ -197,7 +201,7 @@ impl<E: Encoder> WriteServer<E> {
                     break;
                 }
 
-                std::thread::sleep(SERVER_WAIT_TIME);
+                std::thread::sleep(BLOCKING_POLL_INTERVAL);
             }
         }
     }
@@ -223,7 +227,7 @@ impl<E: Encoder> WriteServer<E> {
                 break;
             }
 
-            std::thread::sleep(SERVER_WAIT_TIME);
+            std::thread::sleep(BLOCKING_POLL_INTERVAL);
         }
 
         // Push will never fail because we made sure a slot is available in the

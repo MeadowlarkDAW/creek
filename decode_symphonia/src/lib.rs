@@ -6,6 +6,7 @@
 
 use std::fs::File;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use symphonia::core::audio::SampleBuffer;
 use symphonia::core::codecs::{CodecParameters, Decoder as SymphDecoder, DecoderOptions};
@@ -46,11 +47,13 @@ impl Decoder for SymphoniaDecoder {
     const DEFAULT_BLOCK_SIZE: usize = 16384;
     const DEFAULT_NUM_CACHE_BLOCKS: usize = 0;
     const DEFAULT_NUM_LOOK_AHEAD_BLOCKS: usize = 8;
+    const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
     fn new(
         file: PathBuf,
         start_frame: usize,
         block_size: usize,
+        _poll_interval: Duration,
         _additional_opts: Self::AdditionalOpts,
     ) -> Result<(Self, FileInfo<Self::FileParams>), Self::OpenError> {
         // Create a hint to help the format registry guess what format reader is appropriate.
@@ -107,9 +110,9 @@ impl Decoder for SymphoniaDecoder {
 
         // Create a decoder for the stream.
         let mut decoder = symphonia::default::get_codecs().make(&params, &decoder_opts)?;
-        debug_assert_eq!(params.n_frames, decoder.codec_params().n_frames);
-        debug_assert_eq!(params.sample_rate, decoder.codec_params().sample_rate);
-        debug_assert_eq!(params.channels, decoder.codec_params().channels);
+        assert_eq!(params.n_frames, decoder.codec_params().n_frames);
+        assert_eq!(params.sample_rate, decoder.codec_params().sample_rate);
+        assert_eq!(params.channels, decoder.codec_params().channels);
 
         // The stream/decoder might not always provide the actual numbers
         // of channels (MP4/AAC/ALAC). In this case the number of channels
@@ -123,7 +126,7 @@ impl Decoder for SymphoniaDecoder {
                     // Get the buffer spec.
                     let spec = *decoded.spec();
                     if let Some(channels) = channels {
-                        debug_assert_eq!(channels, spec.channels);
+                        assert_eq!(channels, spec.channels);
                     } else {
                         log::debug!(
                             "Assuming {num_channels} channel(s) according to the first decoded packet",
@@ -403,8 +406,13 @@ mod tests {
 
         for file in files {
             dbg!(file.0);
-            let decoder =
-                SymphoniaDecoder::new(file.0.into(), 0, SymphoniaDecoder::DEFAULT_BLOCK_SIZE, ());
+            let decoder = SymphoniaDecoder::new(
+                file.0.into(),
+                0,
+                SymphoniaDecoder::DEFAULT_BLOCK_SIZE,
+                SymphoniaDecoder::DEFAULT_POLL_INTERVAL,
+                (),
+            );
             match decoder {
                 Ok((_, file_info)) => {
                     assert_eq!(file_info.num_channels, file.1);
@@ -422,8 +430,13 @@ mod tests {
     fn decode_first_frame() {
         let block_size = 10;
 
-        let decoder =
-            SymphoniaDecoder::new("../test_files/wav_u8_mono.wav".into(), 0, block_size, ());
+        let decoder = SymphoniaDecoder::new(
+            "../test_files/wav_u8_mono.wav".into(),
+            0,
+            block_size,
+            SymphoniaDecoder::DEFAULT_POLL_INTERVAL,
+            (),
+        );
 
         let (mut decoder, file_info) = decoder.unwrap();
 

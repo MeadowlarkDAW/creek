@@ -1,10 +1,9 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::{FileInfo, SERVER_WAIT_TIME};
-
 use super::{ClientToServerMsg, DataBlock, DataBlockCache, Decoder, HeapData, ServerToClientMsg};
+use crate::{FileInfo, BLOCKING_POLL_INTERVAL};
 
 pub(crate) struct ReadServer<D: Decoder> {
     to_client_tx: Producer<ServerToClientMsg<D>>,
@@ -22,6 +21,7 @@ pub(crate) struct ReadServer<D: Decoder> {
 
     run: bool,
     client_closed: bool,
+    poll_interval: Duration,
 }
 
 impl<D: Decoder> ReadServer<D> {
@@ -32,6 +32,7 @@ impl<D: Decoder> ReadServer<D> {
         start_frame: usize,
         num_prefetch_blocks: usize,
         block_size: usize,
+        poll_interval: Duration,
         to_client_tx: Producer<ServerToClientMsg<D>>,
         from_client_rx: Consumer<ClientToServerMsg<D>>,
         close_signal_rx: Consumer<Option<HeapData<D::T>>>,
@@ -41,7 +42,13 @@ impl<D: Decoder> ReadServer<D> {
             RingBuffer::<Result<FileInfo<D::FileParams>, D::OpenError>>::new(1);
 
         std::thread::spawn(move || {
-            match D::new(file, start_frame, block_size, additional_opts) {
+            match D::new(
+                file,
+                start_frame,
+                block_size,
+                poll_interval,
+                additional_opts,
+            ) {
                 Ok((decoder, file_info)) => {
                     let num_channels = file_info.num_channels;
 
@@ -60,6 +67,7 @@ impl<D: Decoder> ReadServer<D> {
                         block_size,
                         run: true,
                         client_closed: false,
+                        poll_interval,
                     });
                 }
                 Err(e) => {
@@ -74,7 +82,7 @@ impl<D: Decoder> ReadServer<D> {
                 return res;
             }
 
-            std::thread::sleep(SERVER_WAIT_TIME);
+            std::thread::sleep(BLOCKING_POLL_INTERVAL);
         }
     }
 
@@ -216,7 +224,7 @@ impl<D: Decoder> ReadServer<D> {
             }
 
             if do_sleep {
-                std::thread::sleep(SERVER_WAIT_TIME);
+                std::thread::sleep(self.poll_interval);
             }
         }
 
@@ -229,7 +237,7 @@ impl<D: Decoder> ReadServer<D> {
                     break;
                 }
 
-                std::thread::sleep(SERVER_WAIT_TIME);
+                std::thread::sleep(BLOCKING_POLL_INTERVAL);
             }
         }
     }
@@ -255,7 +263,7 @@ impl<D: Decoder> ReadServer<D> {
                 break;
             }
 
-            std::thread::sleep(SERVER_WAIT_TIME);
+            std::thread::sleep(BLOCKING_POLL_INTERVAL);
         }
 
         // Push will never fail because we made sure a slot is available in the

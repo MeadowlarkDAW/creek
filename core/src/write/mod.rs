@@ -5,6 +5,8 @@ mod write_stream;
 
 pub mod error;
 
+use std::time::Duration;
+
 pub use data::WriteBlock;
 pub use encoder::{num_files_to_file_name_extension, Encoder, WriteStatus};
 pub use error::{FatalWriteError, WriteError};
@@ -53,6 +55,13 @@ pub struct WriteStreamOptions<E: Encoder> {
     ///
     /// The default is `None`.
     pub server_msg_channel_size: Option<usize>,
+
+    /// How often the encoder should poll for data.
+    ///
+    /// If this is `None`, then the Encoder's default will be used.
+    ///
+    /// The default is `None`.
+    pub encoder_poll_interval: Option<Duration>,
 }
 
 impl<E: Encoder> Default for WriteStreamOptions<E> {
@@ -62,6 +71,7 @@ impl<E: Encoder> Default for WriteStreamOptions<E> {
             num_write_blocks: E::DEFAULT_NUM_WRITE_BLOCKS,
             block_size: E::DEFAULT_BLOCK_SIZE,
             server_msg_channel_size: None,
+            encoder_poll_interval: None,
         }
     }
 }

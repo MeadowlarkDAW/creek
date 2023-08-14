@@ -4,7 +4,11 @@
 [![Crates.io](https://img.shields.io/crates/v/creek.svg)](https://crates.io/crates/creek)
 [![License](https://img.shields.io/crates/l/creek.svg)](https://github.com/RustyDAW/creek/blob/main/COPYRIGHT)
 
-Realtime-safe disk streaming to/from audio files using [Symphonia](https://github.com/pdeljanov/Symphonia) to support a variety of codecs. Refer to [Symphonia's documentation](https://docs.rs/symphonia/latest/symphonia/#support) for supported codecs. Symphonia's Cargo features are exposed with the prefix `decode-`, except `aac` and `isomp4` which creek does not work with yet. For example, to enable MP3 decoding in creek, enable the `decode-mp3` feature.
+Realtime-safe streaming to/from audio files on disk.
+
+The included decoder uses [Symphonia](https://github.com/pdeljanov/Symphonia). Refer to [Symphonia's documentation](https://docs.rs/symphonia/latest/symphonia/#support) for supported codecs. Symphonia's Cargo features are exposed with the prefix `decode-`, except `aac` and `isomp4` which creek does not work with yet. For example, to enable MP3 decoding in creek, enable the `decode-mp3` feature.
+
+The included encoder only supports the WAV format.
 
 ## How the Read Stream Works
 
@@ -25,17 +29,6 @@ This stream automatically spawns an "IO server" that handles the non-realtime sa
 ## How the Write Stream Works
 
 The write stream works how you would expect. Once a block is filled with data, it is sent to the IO server to be written. This block is also recycled back to the stream after writing is done.
-
-### Codecs (Encode)
-
-| Codec  | Status                                          | Default |
-| ------ | ----------------------------------------------- | ------- |
-| Wav    | :heavy_check_mark: Uncompressed, no channel map | Yes     |
-| FLAC   | ? Not currently on roadmap                      | No      |
-| MP3    | ? Not currently on roadmap                      | No      |
-| Opus   | ? Not currently on roadmap                      | No      |
-| PCM    | ? Not currently on roadmap                      | No      |
-| Vorbis | ? Not currently on roadmap                      | No      |
 
 ## Examples
 

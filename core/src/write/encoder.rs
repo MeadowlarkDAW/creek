@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::Debug;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use super::WriteBlock;
 use crate::FileInfo;
@@ -45,6 +46,9 @@ pub trait Encoder: Sized + 'static {
     /// write latency scenerio.
     const DEFAULT_NUM_WRITE_BLOCKS: usize;
 
+    /// The default interval for how often the encoder polls for data.
+    const DEFAULT_POLL_INTERVAL: Duration;
+
     /// Open the file for writing.
     ///
     /// * `file` - The path of the file to open.
@@ -59,6 +63,7 @@ pub trait Encoder: Sized + 'static {
         sample_rate: u32,
         block_size: usize,
         num_write_blocks: usize,
+        poll_interval: Duration,
         additional_opts: Self::AdditionalOpts,
     ) -> Result<(Self, FileInfo<Self::FileParams>), Self::OpenError>;
 

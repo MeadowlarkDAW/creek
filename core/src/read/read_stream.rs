@@ -7,7 +7,7 @@ use super::{
     ClientToServerMsg, DataBlock, Decoder, HeapData, ReadData, ReadServer, ReadStreamOptions,
     ServerToClientMsg,
 };
-use crate::{FileInfo, SERVER_WAIT_TIME};
+use crate::{FileInfo, BLOCKING_POLL_INTERVAL};
 
 /// Describes how to search for suitable caches when seeking in a [`ReadDiskStream`].
 ///
@@ -89,6 +89,10 @@ impl<D: Decoder> ReadDiskStream<D> {
         // Create dedicated close signal.
         let (close_signal_tx, close_signal_rx) = RingBuffer::<Option<HeapData<D::T>>>::new(1);
 
+        let poll_interval = stream_opts
+            .decoder_poll_interval
+            .unwrap_or(D::DEFAULT_POLL_INTERVAL);
+
         let file: PathBuf = file.into();
 
         match ReadServer::new(
@@ -96,6 +100,7 @@ impl<D: Decoder> ReadDiskStream<D> {
             start_frame,
             stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks,
             stream_opts.block_size,
+            poll_interval,
             to_client_tx,
             from_client_rx,
             close_signal_rx,
@@ -552,7 +557,7 @@ impl<D: Decoder> ReadDiskStream<D> {
                 break;
             }
 
-            std::thread::sleep(SERVER_WAIT_TIME);
+            std::thread::sleep(BLOCKING_POLL_INTERVAL);
         }
 
         Ok(())
@@ -618,7 +623,7 @@ impl<D: Decoder> ReadDiskStream<D> {
                 break;
             }
 
-            std::thread::sleep(SERVER_WAIT_TIME);
+            std::thread::sleep(BLOCKING_POLL_INTERVAL);
         }
 
         Ok(frames_written)

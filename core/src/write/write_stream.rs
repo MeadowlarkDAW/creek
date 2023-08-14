@@ -6,7 +6,7 @@ use super::{
     ClientToServerMsg, Encoder, HeapData, ServerToClientMsg, WriteBlock, WriteServer,
     WriteStreamOptions,
 };
-use crate::{FileInfo, SERVER_WAIT_TIME};
+use crate::{FileInfo, BLOCKING_POLL_INTERVAL};
 
 /// A realtime-safe disk-streaming writer of audio files.
 pub struct WriteDiskStream<E: Encoder> {
@@ -59,6 +59,10 @@ impl<E: Encoder> WriteDiskStream<E> {
         // Create dedicated close signal.
         let (close_signal_tx, close_signal_rx) = RingBuffer::<Option<HeapData<E::T>>>::new(1);
 
+        let poll_interval = stream_opts
+            .encoder_poll_interval
+            .unwrap_or(E::DEFAULT_POLL_INTERVAL);
+
         let file: PathBuf = file.into();
 
         match WriteServer::new(
@@ -67,6 +71,7 @@ impl<E: Encoder> WriteDiskStream<E> {
             stream_opts.block_size,
             num_channels,
             sample_rate,
+            poll_interval,
             to_client_tx,
             from_client_rx,
             close_signal_rx,
@@ -166,7 +171,7 @@ impl<E: Encoder> WriteDiskStream<E> {
                 break;
             }
 
-            std::thread::sleep(SERVER_WAIT_TIME);
+            std::thread::sleep(BLOCKING_POLL_INTERVAL);
         }
 
         Ok(())

@@ -5,6 +5,8 @@ mod server;
 
 pub mod error;
 
+use std::time::Duration;
+
 pub use data::{DataBlock, ReadData};
 pub use decoder::Decoder;
 pub use error::{FatalReadError, ReadError};
@@ -89,6 +91,13 @@ pub struct ReadStreamOptions<D: Decoder> {
     ///
     /// The default is `None`.
     pub server_msg_channel_size: Option<usize>,
+
+    /// How often the decoder should poll for data.
+    ///
+    /// If this is `None`, then the Decoder's default will be used.
+    ///
+    /// The default is `None`.
+    pub decoder_poll_interval: Option<Duration>,
 }
 
 impl<D: Decoder> Default for ReadStreamOptions<D> {
@@ -100,6 +109,7 @@ impl<D: Decoder> Default for ReadStreamOptions<D> {
             num_look_ahead_blocks: D::DEFAULT_NUM_LOOK_AHEAD_BLOCKS,
             num_caches: 1,
             server_msg_channel_size: None,
+            decoder_poll_interval: None,
         }
     }
 }

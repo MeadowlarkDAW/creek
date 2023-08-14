@@ -1,6 +1,7 @@
 use creek::{wav_bit_depth, WavEncoder, WriteDiskStream};
-use eframe::{egui, epi};
-use rtrb::{Consumer, Producer, RingBuffer};
+use eframe::egui;
+use rtrb::{Consumer, Producer};
+use std::time::Duration;
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
 
@@ -22,9 +23,6 @@ pub struct DemoWriterApp {
     to_player_tx: Producer<GuiToProcessMsg>,
     from_player_rx: Consumer<ProcessToGuiMsg>,
 
-    frame_close_tx: Producer<()>,
-    frame_close_rx: Option<Consumer<()>>,
-
     freq: f32,
     sample_rate: u32,
 
@@ -37,8 +35,6 @@ impl DemoWriterApp {
         from_player_rx: Consumer<ProcessToGuiMsg>,
         sample_rate: u32,
     ) -> Self {
-        let (frame_close_tx, frame_close_rx) = RingBuffer::new(1);
-
         Self {
             file_active: false,
             bit_rate: BitRate::Int24,
@@ -46,8 +42,6 @@ impl DemoWriterApp {
             written_frames: 0,
             to_player_tx,
             from_player_rx,
-            frame_close_tx,
-            frame_close_rx: Some(frame_close_rx),
             freq: 261.626,
             sample_rate,
             fatal_error: false,
@@ -55,30 +49,9 @@ impl DemoWriterApp {
     }
 }
 
-impl epi::App for DemoWriterApp {
-    fn name(&self) -> &str {
-        "rt-audio-disk-stream demo writer"
-    }
-
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
-        if let Some(mut frame_close_rx) = self.frame_close_rx.take() {
-            // Spawn thread that calls a repaint 60 times a second.
-
-            let repaint_signal = frame.repaint_signal().clone();
-
-            std::thread::spawn(move || {
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs_f64(1.0 / 60.0));
-
-                    // Check if app has closed.
-                    if frame_close_rx.pop().is_ok() {
-                        break;
-                    }
-
-                    repaint_signal.request_repaint();
-                }
-            });
-        }
+impl eframe::App for DemoWriterApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.request_repaint_after(Duration::from_millis(16));
 
         while let Ok(msg) = self.from_player_rx.pop() {
             match msg {
@@ -133,7 +106,7 @@ impl epi::App for DemoWriterApp {
 
                 if ui
                     .add(
-                        egui::Slider::f32(&mut self.freq, 30.0..=20_000.0)
+                        egui::Slider::new(&mut self.freq, 30.0..=20_000.0)
                             .logarithmic(true)
                             .text("pitch"),
                     )
@@ -186,7 +159,7 @@ impl epi::App for DemoWriterApp {
                         BitRate::Uint8 => {
                             let write_stream =
                                 WriteDiskStream::<WavEncoder<wav_bit_depth::Uint8>>::new(
-                                    "./examples/demo_writer/out_files/output.wav",
+                                    "./target/output-uint8.wav",
                                     2,
                                     self.sample_rate,
                                     Default::default(),
@@ -200,7 +173,7 @@ impl epi::App for DemoWriterApp {
                         BitRate::Int16 => {
                             let write_stream =
                                 WriteDiskStream::<WavEncoder<wav_bit_depth::Int16>>::new(
-                                    "./examples/demo_writer/out_files/output.wav",
+                                    "./target/output-int16.wav",
                                     2,
                                     self.sample_rate,
                                     Default::default(),
@@ -214,7 +187,7 @@ impl epi::App for DemoWriterApp {
                         BitRate::Int24 => {
                             let write_stream =
                                 WriteDiskStream::<WavEncoder<wav_bit_depth::Int24>>::new(
-                                    "./examples/demo_writer/out_files/output.wav",
+                                    "./target/output-int24.wav",
                                     2,
                                     self.sample_rate,
                                     Default::default(),
@@ -228,7 +201,7 @@ impl epi::App for DemoWriterApp {
                         BitRate::Float32 => {
                             let write_stream =
                                 WriteDiskStream::<WavEncoder<wav_bit_depth::Float32>>::new(
-                                    "./examples/demo_writer/out_files/output.wav",
+                                    "./target/output-f32.wav",
                                     2,
                                     self.sample_rate,
                                     Default::default(),
@@ -245,11 +218,5 @@ impl epi::App for DemoWriterApp {
                 }
             }
         });
-    }
-}
-
-impl Drop for DemoWriterApp {
-    fn drop(&mut self) {
-        self.frame_close_tx.push(()).unwrap();
     }
 }

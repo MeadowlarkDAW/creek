@@ -30,5 +30,10 @@ fn main() {
     let (_cpal_stream, sample_rate) = output::Output::new(to_gui_tx, from_gui_rx);
     let app = ui::DemoWriterApp::new(to_process_tx, from_process_rx, sample_rate);
 
-    eframe::run_native(Box::new(app));
+    eframe::run_native(
+        "creek demo writer",
+        Default::default(),
+        Box::new(|_cc| Box::new(app)),
+    )
+    .unwrap();
 }

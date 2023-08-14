@@ -37,6 +37,7 @@ impl Output {
                 move |err| {
                     eprintln!("{}", err);
                 },
+                None,
             )
             .unwrap();
 

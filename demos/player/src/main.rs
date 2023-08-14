@@ -33,5 +33,10 @@ fn main() {
     let app = ui::DemoPlayerApp::new(to_process_tx, from_process_rx, file_path);
     let _cpal_stream = output::Output::new(to_gui_tx, from_gui_rx);
 
-    eframe::run_native(Box::new(app));
+    eframe::run_native(
+        "creek demo player",
+        Default::default(),
+        Box::new(|_cc| Box::new(app)),
+    )
+    .unwrap();
 }

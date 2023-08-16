@@ -122,7 +122,7 @@ impl<E: Encoder> WriteServer<E> {
                     }
                     ClientToServerMsg::FinishFile => match self.encoder.finish_file() {
                         Ok(()) => {
-                            self.send_msg(ServerToClientMsg::Finished);
+                            self.send_msg(ServerToClientMsg::FileFinished);
                             self.file_finished = true;
                             self.run = false;
                             do_sleep = false;
@@ -137,9 +137,9 @@ impl<E: Encoder> WriteServer<E> {
                             break;
                         }
                     },
-                    ClientToServerMsg::DiscardFile => match self.encoder.discard_file() {
+                    ClientToServerMsg::DiscardAndClose => match self.encoder.discard_file() {
                         Ok(()) => {
-                            self.send_msg(ServerToClientMsg::Finished);
+                            self.send_msg(ServerToClientMsg::FileFinished);
                             self.file_finished = true;
                             self.run = false;
                             do_sleep = false;

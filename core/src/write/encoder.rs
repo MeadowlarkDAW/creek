@@ -76,6 +76,9 @@ pub trait Encoder: Sized + 'static {
     /// the file name (i.e. "_001" for the first file, "_002" for the second, etc.)
     /// This helper function `num_files_to_file_name_extension()` can be used to find
     /// this extension.
+    ///
+    /// The block may contain less written frames than the length of the channel Vecs,
+    /// so be sure to only read up to `block.frames_written()`.
     fn encode(&mut self, block: &AudioBlock<Self::T>) -> Result<WriteStatus, Self::FatalError>;
 
     /// Finish up the file and then close it.

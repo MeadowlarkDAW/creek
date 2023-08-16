@@ -16,7 +16,7 @@ use server::WriteServer;
 
 enum ServerToClientMsg<E: Encoder> {
     NewWriteBlock { block: WriteBlock<E::T> },
-    Finished,
+    FileFinished,
     ReachedMaxSize { num_files: u32 },
     FatalError(E::FatalError),
 }
@@ -24,7 +24,7 @@ enum ServerToClientMsg<E: Encoder> {
 enum ClientToServerMsg<E: Encoder> {
     WriteBlock { block: WriteBlock<E::T> },
     FinishFile,
-    DiscardFile,
+    DiscardAndClose,
     DiscardAndRestart,
 }
 

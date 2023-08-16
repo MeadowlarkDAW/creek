@@ -20,8 +20,8 @@ pub struct WriteDiskStream<E: Encoder> {
 
     file_info: FileInfo<E::FileParams>,
     restart_count: usize,
-    finished: bool,
-    finish_complete: bool,
+    closed: bool,
+    file_finished: bool,
     fatal_error: bool,
 
     num_files: u32,
@@ -123,8 +123,8 @@ impl<E: Encoder> WriteDiskStream<E> {
 
             file_info,
             restart_count: 0,
-            finished: false,
-            finish_complete: false,
+            closed: false,
+            file_finished: false,
             fatal_error: false,
 
             num_files: 1,
@@ -138,7 +138,7 @@ impl<E: Encoder> WriteDiskStream<E> {
     /// In theory this should never return false, but this function is here
     /// as a sanity-check.
     pub fn is_ready(&mut self) -> Result<bool, WriteError<E::FatalError>> {
-        if self.fatal_error || self.finished {
+        if self.fatal_error || self.closed {
             return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
         }
 
@@ -154,7 +154,7 @@ impl<E: Encoder> WriteDiskStream<E> {
 
     /// Blocks the current thread until the stream is ready to be written to.
     ///
-    /// NOTE: This is ***note*** realtime-safe.
+    /// This is ***not*** realtime-safe.
     ///
     /// In theory you shouldn't need this, but this function is here
     /// as a sanity-check.
@@ -181,7 +181,7 @@ impl<E: Encoder> WriteDiskStream<E> {
     /// `WriteDiskStream::num_files()` can be used to get the total numbers of files that
     /// have been created.
     pub fn write(&mut self, buffer: &[&[E::T]]) -> Result<(), WriteError<E::FatalError>> {
-        if self.fatal_error || self.finished {
+        if self.fatal_error || self.closed {
             return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
         }
 
@@ -297,15 +297,41 @@ impl<E: Encoder> WriteDiskStream<E> {
         Ok(())
     }
 
-    /// Finish the file and close the stream. The stream cannot be used after calling this.
+    /// Finish the file and close the stream. `WriteDiskStream::write()` cannot be used
+    /// after calling this.
     ///
     /// This is realtime-safe.
     ///
-    /// `WriteDiskStream.finish_complete()` will return true once the file has been
-    /// successfully finished and closed.
+    /// Because this method is realtime safe and doesn't block, the file may still be in
+    /// the process of finishing when this method returns. If you wish to make sure that
+    /// the file has successfully finished, periodically call
+    /// `WriteDiskStream::poll_file_finished()` after this.
     pub fn finish_and_close(&mut self) -> Result<(), WriteError<E::FatalError>> {
-        if self.fatal_error || self.finished {
+        if self.fatal_error || self.closed {
             return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
+        }
+
+        {
+            // This check should never fail because it can only be `None` in the destructor.
+            let heap = self.heap_data.as_mut().unwrap();
+
+            if let Some(mut current_block) = heap.current_block.take() {
+                if current_block.block.frames_written > 0 {
+                    // Send the last bit of remaining samples to be encoded.
+
+                    // Check that there is at-least one slot open.
+                    if self.to_server_tx.is_full() {
+                        return Err(WriteError::IOServerChannelFull);
+                    }
+
+                    current_block.restart_count = self.restart_count;
+                    let _ = self.to_server_tx.push(ClientToServerMsg::WriteBlock {
+                        block: current_block,
+                    });
+                } else {
+                    heap.current_block = Some(current_block);
+                }
+            }
         }
 
         // Check that there is at-least one slot open.
@@ -317,17 +343,20 @@ impl<E: Encoder> WriteDiskStream<E> {
         // a previous step.
         let _ = self.to_server_tx.push(ClientToServerMsg::FinishFile);
 
-        self.finished = true;
-
         Ok(())
     }
 
-    /// Delete all files created by this stream and close the stream. The stream cannot
-    /// be used after calling this.
+    /// Delete all files created by this stream and close the stream.
+    /// `WriteDiskStream::write()` cannot be used after calling this.
     ///
     /// This is realtime-safe.
+    ///
+    /// Because this method is realtime safe and doesn't block, the file may still be in
+    /// the process of finishing when this method returns. If you wish to make sure that
+    /// the file has successfully finished, periodically call
+    /// `WriteDiskStream::poll_file_finished()` after this.
     pub fn discard_and_close(&mut self) -> Result<(), WriteError<E::FatalError>> {
-        if self.fatal_error || self.finished {
+        if self.fatal_error || self.closed {
             return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
         }
 
@@ -338,20 +367,20 @@ impl<E: Encoder> WriteDiskStream<E> {
 
         // This cannot fail because we made sure there was a slot open in
         // a previous step.
-        let _ = self.to_server_tx.push(ClientToServerMsg::DiscardFile);
+        let _ = self.to_server_tx.push(ClientToServerMsg::DiscardAndClose);
 
-        self.finished = true;
+        self.closed = true;
         self.num_files = 0;
 
         Ok(())
     }
 
-    /// Delete all files created by this stream and start over. This stream can
-    /// continue to be written to after calling this.
+    /// Delete all files created by this stream and start over. `WriteDiskStream::write()`
+    /// can continue to be called after calling this.
     ///
     /// This is realtime-safe.
     pub fn discard_and_restart(&mut self) -> Result<(), WriteError<E::FatalError>> {
-        if self.fatal_error || self.finished {
+        if self.fatal_error || self.closed {
             return Err(WriteError::FatalError(FatalWriteError::StreamClosed));
         }
 
@@ -374,6 +403,43 @@ impl<E: Encoder> WriteDiskStream<E> {
         self.restart_count += 1;
         self.file_info.num_frames = 0;
         self.num_files = 1;
+
+        Ok(())
+    }
+
+    /// Finish the file and consume the stream. This will block the current thread until
+    /// either the file has successfully finished or an error is returned.
+    ///
+    /// This is ***not*** realtime-safe.
+    pub fn finish_blocking(mut self) -> Result<(), WriteError<E::FatalError>> {
+        self.finish_and_close()?;
+
+        loop {
+            if self.poll_file_finished()? {
+                break;
+            }
+
+            std::thread::sleep(BLOCKING_POLL_INTERVAL);
+        }
+
+        Ok(())
+    }
+
+    /// Delete all files created by this stream and consume the stream. This will block
+    /// the current thread until either the file has successfully finished or an error
+    /// is returned.
+    ///
+    /// This is ***not*** realtime-safe.
+    pub fn discard_blocking(mut self) -> Result<(), WriteError<E::FatalError>> {
+        self.discard_and_close()?;
+
+        loop {
+            if self.poll_file_finished()? {
+                break;
+            }
+
+            std::thread::sleep(BLOCKING_POLL_INTERVAL);
+        }
 
         Ok(())
     }
@@ -402,8 +468,8 @@ impl<E: Encoder> WriteDiskStream<E> {
                         heap.block_pool.push(block);
                     }
                 }
-                ServerToClientMsg::Finished => {
-                    self.finish_complete = true;
+                ServerToClientMsg::FileFinished => {
+                    self.file_finished = true;
                 }
                 ServerToClientMsg::ReachedMaxSize { num_files } => {
                     self.num_files = num_files;
@@ -418,19 +484,32 @@ impl<E: Encoder> WriteDiskStream<E> {
         Ok(())
     }
 
-    /// Returns true when the file has been successfully finished and closed, false
-    /// otherwise.
-    ///
-    /// This is realtime-safe.
-    pub fn finish_complete(&self) -> bool {
-        self.finish_complete
-    }
-
     /// Return info about the file.
     ///
     /// This is realtime-safe.
     pub fn info(&self) -> &FileInfo<E::FileParams> {
         &self.file_info
+    }
+
+    /// Returns whether or not this stream is closed.
+    ///
+    /// This is realtime-safe.
+    pub fn closed(&self) -> bool {
+        self.closed
+    }
+
+    /// Poll to see if the file has successfully finished being written to disk after
+    /// a call to `WriteDiskStream::finish_and_close()` (or successfully discarded
+    /// after a call to `WriteDiskStream::discard_and_close()`)
+    ///
+    /// This is realtime-safe.
+    ///
+    /// If an error is returned, then it may mean that there was an error writing
+    /// the file.
+    pub fn poll_file_finished(&mut self) -> Result<bool, WriteError<E::FatalError>> {
+        self.poll()?;
+
+        Ok(self.file_finished)
     }
 
     /// Returns the total number of files created by this stream. This can be more

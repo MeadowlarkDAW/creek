@@ -39,7 +39,7 @@ impl DemoPlayerApp {
             // The number of prefetch blocks in a cache block. This will cause a cache to be
             // used whenever the stream is seeked to a frame in the range:
             //
-            // `[cache_start, cache_start + (num_cache_blocks * block_size))`
+            // `[cache_start, cache_start + (num_cache_blocks * block_frames))`
             //
             // If this is 0, then the cache is only used when seeked to exactly `cache_start`.
             num_cache_blocks: 20,
@@ -53,7 +53,7 @@ impl DemoPlayerApp {
         };
 
         // This is how to calculate the total size of a cache block.
-        let cache_size = opts.num_cache_blocks * SymphoniaDecoder::DEFAULT_BLOCK_SIZE;
+        let cache_size = opts.num_cache_blocks * SymphoniaDecoder::DEFAULT_BLOCK_FRAMES;
 
         // Open the read stream.
         let mut read_stream = ReadDiskStream::<SymphoniaDecoder>::new(file_path, 0, opts).unwrap();

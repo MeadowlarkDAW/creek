@@ -6,11 +6,13 @@
 
 use std::time::Duration;
 
+mod audio_block;
 pub mod read;
 pub mod write;
 
-pub use read::{DataBlock, Decoder, ReadDiskStream, ReadStreamOptions, SeekMode};
-pub use write::{Encoder, WriteBlock, WriteDiskStream, WriteStatus, WriteStreamOptions};
+pub use audio_block::AudioBlock;
+pub use read::{Decoder, ReadDiskStream, ReadStreamOptions, SeekMode};
+pub use write::{Encoder, WriteDiskStream, WriteStatus, WriteStreamOptions};
 
 const BLOCKING_POLL_INTERVAL: Duration = Duration::from_millis(1);
 

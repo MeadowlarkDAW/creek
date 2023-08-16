@@ -152,23 +152,23 @@ impl Process {
                     num_frames
                 };
 
-                let read_data = read_disk_stream.read(read_frames)?;
+                let read_res = read_disk_stream.read(read_frames)?;
 
-                playhead += read_data.num_frames();
+                playhead += read_res.frames;
                 if playhead >= loop_end {
                     // Copy up to the end of the loop.
-                    let to_end_of_loop = read_data.num_frames() - (playhead - loop_end);
+                    let to_end_of_loop = read_res.frames - (playhead - loop_end);
 
-                    if read_data.num_channels() == 1 {
-                        let ch = read_data.read_channel(0);
+                    if read_res.channels.len() == 1 {
+                        let ch = &read_res.channels[0];
 
                         for i in 0..to_end_of_loop {
                             data[i * 2] = ch[i];
                             data[i * 2 + 1] = ch[i];
                         }
-                    } else if read_data.num_channels() == 2 {
-                        let ch1 = read_data.read_channel(0);
-                        let ch2 = read_data.read_channel(1);
+                    } else if read_res.channels.len() == 2 {
+                        let ch1 = &read_res.channels[0];
+                        let ch2 = &read_res.channels[1];
 
                         for i in 0..to_end_of_loop {
                             data[i * 2] = ch1[i];
@@ -181,24 +181,24 @@ impl Process {
                     data = &mut data[to_end_of_loop * 2..];
                 } else {
                     // Else copy all the read data.
-                    if read_data.num_channels() == 1 {
-                        let ch = read_data.read_channel(0);
+                    if read_res.channels.len() == 1 {
+                        let ch = &read_res.channels[0];
 
-                        for i in 0..read_data.num_frames() {
+                        for i in 0..read_res.frames {
                             data[i * 2] = ch[i];
                             data[i * 2 + 1] = ch[i];
                         }
-                    } else if read_data.num_channels() == 2 {
-                        let ch1 = read_data.read_channel(0);
-                        let ch2 = read_data.read_channel(1);
+                    } else if read_res.channels.len() == 2 {
+                        let ch1 = &read_res.channels[0];
+                        let ch2 = &read_res.channels[1];
 
-                        for i in 0..read_data.num_frames() {
+                        for i in 0..read_res.frames {
                             data[i * 2] = ch1[i];
                             data[i * 2 + 1] = ch2[i];
                         }
                     }
 
-                    data = &mut data[read_data.num_frames() * 2..];
+                    data = &mut data[read_res.frames * 2..];
                 }
             }
 

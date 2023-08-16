@@ -1,44 +1,23 @@
-/// A block to write data to.
-pub struct WriteBlock<T: Copy + Clone + Default + Send> {
-    pub(crate) block: Vec<Vec<T>>,
+use crate::AudioBlock;
 
-    pub(crate) written_frames: usize,
-    pub(crate) restart_count: usize,
+pub(super) struct WriteBlock<T: Copy + Clone + Default + Send> {
+    pub block: AudioBlock<T>,
+    pub restart_count: usize,
 }
 
 impl<T: Copy + Clone + Default + Send> WriteBlock<T> {
-    /// # Safety
-    ///
-    /// Using an allocated but uninitialized [`Vec`] is safe because the block data
-    /// will be always filled before it is sent to be written by the IO server.
-    pub fn new(num_channels: usize, block_size: usize) -> Self {
-        let mut block: Vec<Vec<T>> = Vec::with_capacity(num_channels);
-        for _ in 0..num_channels {
-            let mut data: Vec<T> = Vec::with_capacity(block_size);
-            #[allow(clippy::uninit_vec)] // TODO
-            unsafe {
-                data.set_len(block_size)
-            };
-            block.push(data);
-        }
+    pub fn new(num_channels: usize, block_frames: usize) -> Self {
+        let mut block = AudioBlock::new(num_channels, block_frames);
+        block.frames_written = 0;
 
         WriteBlock {
             block,
-            written_frames: 0,
             restart_count: 0,
         }
     }
-
-    pub fn block(&self) -> &[Vec<T>] {
-        self.block.as_slice()
-    }
-
-    pub fn written_frames(&self) -> usize {
-        self.written_frames
-    }
 }
 
-pub(crate) struct HeapData<T: Copy + Clone + Default + Send> {
+pub(super) struct HeapData<T: Copy + Clone + Default + Send> {
     pub block_pool: Vec<WriteBlock<T>>,
     pub current_block: Option<WriteBlock<T>>,
     pub next_block: Option<WriteBlock<T>>,

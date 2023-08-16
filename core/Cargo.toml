@@ -14,3 +14,4 @@ repository = "https://github.com/RustyDAW/creek"
 
 [dependencies]
 rtrb = "0.2"
+arrayvec = "0.7.4"

@@ -6,7 +6,7 @@
 
 pub use creek_core::*;
 
-#[cfg(feature = "decode")]
+#[cfg(feature = "decode-symphonia")]
 pub use creek_decode_symphonia::*;
 
 #[cfg(feature = "encode-wav")]

@@ -4,9 +4,10 @@ use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::{FileInfo, BLOCKING_POLL_INTERVAL};
 
-use super::{ClientToServerMsg, Encoder, HeapData, ServerToClientMsg, WriteStatus};
+use super::data::HeapData;
+use super::{ClientToServerMsg, Encoder, ServerToClientMsg, WriteStatus};
 
-pub(crate) struct WriteServer<E: Encoder> {
+pub(super) struct WriteServer<E: Encoder> {
     to_client_tx: Producer<ServerToClientMsg<E>>,
     from_client_rx: Consumer<ClientToServerMsg<E>>,
     close_signal_rx: Consumer<Option<HeapData<E::T>>>,
@@ -23,12 +24,11 @@ pub(crate) struct WriteServer<E: Encoder> {
 }
 
 impl<E: Encoder> WriteServer<E> {
-    #[allow(clippy::new_ret_no_self)] // TODO: Rename to `spawn` (breaking API change)
     #[allow(clippy::too_many_arguments)] // TODO: Reduce number of arguments
-    pub fn new(
+    pub(super) fn spawn(
         file: PathBuf,
         num_write_blocks: usize,
-        block_size: usize,
+        block_frames: usize,
         num_channels: u16,
         sample_rate: u32,
         poll_interval: Duration,
@@ -45,7 +45,7 @@ impl<E: Encoder> WriteServer<E> {
                 file,
                 num_channels,
                 sample_rate,
-                block_size,
+                block_frames,
                 num_write_blocks,
                 poll_interval,
                 additional_opts,
@@ -93,12 +93,10 @@ impl<E: Encoder> WriteServer<E> {
                         // Don't use this block if it is from a previous discarded stream.
                         if block.restart_count != self.restart_count {
                             // Clear and send block to be re-used by client.
-                            block.written_frames = 0;
+                            block.block.frames_written = 0;
                             self.send_msg(ServerToClientMsg::NewWriteBlock { block });
                         } else {
-                            // Safe because we assume that the encoder will not try to use any
-                            // unwritten data.
-                            let write_res = unsafe { self.encoder.encode(&block) };
+                            let write_res = self.encoder.encode(&block.block);
 
                             match write_res {
                                 Ok(status) => {
@@ -109,7 +107,7 @@ impl<E: Encoder> WriteServer<E> {
                                     }
 
                                     // Clear and send block to be re-used by client.
-                                    block.written_frames = 0;
+                                    block.block.frames_written = 0;
                                     self.send_msg(ServerToClientMsg::NewWriteBlock { block });
                                 }
                                 Err(e) => {

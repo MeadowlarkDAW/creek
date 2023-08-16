@@ -7,22 +7,21 @@ pub mod error;
 
 use std::time::Duration;
 
-pub use data::WriteBlock;
 pub use encoder::{num_files_to_file_name_extension, Encoder, WriteStatus};
 pub use error::{FatalWriteError, WriteError};
 pub use write_stream::WriteDiskStream;
 
-use data::HeapData;
+use data::WriteBlock;
 use server::WriteServer;
 
-pub(crate) enum ServerToClientMsg<E: Encoder> {
+enum ServerToClientMsg<E: Encoder> {
     NewWriteBlock { block: WriteBlock<E::T> },
     Finished,
     ReachedMaxSize { num_files: u32 },
     FatalError(E::FatalError),
 }
 
-pub(crate) enum ClientToServerMsg<E: Encoder> {
+enum ClientToServerMsg<E: Encoder> {
     WriteBlock { block: WriteBlock<E::T> },
     FinishFile,
     DiscardFile,
@@ -40,12 +39,14 @@ pub struct WriteStreamOptions<E: Encoder> {
     /// write latency scenerio.
     ///
     /// This should be left alone unless you know what you are doing.
+    ///
+    /// This will cause a panic if set to less than 3.
     pub num_write_blocks: usize,
 
     /// The number of frames in a write block.
     ///
     /// This should be left alone unless you know what you are doing.
-    pub block_size: usize,
+    pub block_frames: usize,
 
     /// The size of the realtime ring buffer that sends data to and from the stream the the
     /// internal IO server. This must be sufficiently large enough to avoid stalling the channels.
@@ -69,7 +70,7 @@ impl<E: Encoder> Default for WriteStreamOptions<E> {
         WriteStreamOptions {
             additional_opts: Default::default(),
             num_write_blocks: E::DEFAULT_NUM_WRITE_BLOCKS,
-            block_size: E::DEFAULT_BLOCK_SIZE,
+            block_frames: E::DEFAULT_BLOCK_FRAMES,
             server_msg_channel_size: None,
             encoder_poll_interval: None,
         }

@@ -7,47 +7,48 @@ pub mod error;
 
 use std::time::Duration;
 
-pub use data::{DataBlock, ReadData};
+use crate::AudioBlock;
+
 pub use decoder::Decoder;
 pub use error::{FatalReadError, ReadError};
-pub use read_stream::{ReadDiskStream, SeekMode};
+pub use read_stream::{ReadDiskStream, ReadResult, SeekMode};
 
-use data::{DataBlockCache, HeapData};
+use data::AudioBlockCache;
 use server::ReadServer;
 
-pub(crate) enum ServerToClientMsg<D: Decoder> {
+enum ServerToClientMsg<D: Decoder> {
     ReadIntoBlockRes {
         block_index: usize,
-        block: DataBlock<D::T>,
+        block: AudioBlock<D::T>,
         wanted_start_frame: usize,
     },
     CacheRes {
         cache_index: usize,
-        cache: DataBlockCache<D::T>,
+        cache: AudioBlockCache<D::T>,
         wanted_start_frame: usize,
     },
     FatalError(D::FatalError),
 }
 
-pub(crate) enum ClientToServerMsg<D: Decoder> {
+enum ClientToServerMsg<D: Decoder> {
     ReadIntoBlock {
         block_index: usize,
-        block: Option<DataBlock<D::T>>,
+        block: Option<AudioBlock<D::T>>,
         start_frame: usize,
     },
     DisposeBlock {
-        block: DataBlock<D::T>,
+        block: AudioBlock<D::T>,
     },
     SeekTo {
         frame: usize,
     },
     Cache {
         cache_index: usize,
-        cache: Option<DataBlockCache<D::T>>,
+        cache: Option<AudioBlockCache<D::T>>,
         start_frame: usize,
     },
     DisposeCache {
-        cache: DataBlockCache<D::T>,
+        cache: AudioBlockCache<D::T>,
     },
 }
 
@@ -57,9 +58,11 @@ pub struct ReadStreamOptions<D: Decoder> {
     /// The number of prefetch blocks in a cache block. This will cause a cache to be
     /// used whenever the stream is seeked to a frame in the range:
     ///
-    /// `[cache_start, cache_start + (num_cache_blocks * block_size))`
+    /// `[cache_start, cache_start + (num_cache_blocks * block_frames))`
     ///
     /// If this is 0, then the cache is only used when seeked to exactly `cache_start`.
+    ///
+    /// This will cause a panic if `num_cache_blocks + num_look_ahead_blocks < 3`.
     pub num_cache_blocks: usize,
 
     /// The maximum number of caches that can be active in this stream. Keep in mind each
@@ -76,12 +79,14 @@ pub struct ReadStreamOptions<D: Decoder> {
     /// case latency scenerio.
     ///
     /// This should be left alone unless you know what you are doing.
+    ///
+    /// This will cause a panic if `num_cache_blocks + num_look_ahead_blocks < 3`.
     pub num_look_ahead_blocks: usize,
 
     /// The number of frames in a prefetch block.
     ///
     /// This should be left alone unless you know what you are doing.
-    pub block_size: usize,
+    pub block_frames: usize,
 
     /// The size of the realtime ring buffer that sends data to and from the stream the the
     /// internal IO server. This must be sufficiently large enough to avoid stalling the channels.
@@ -103,7 +108,7 @@ pub struct ReadStreamOptions<D: Decoder> {
 impl<D: Decoder> Default for ReadStreamOptions<D> {
     fn default() -> Self {
         ReadStreamOptions {
-            block_size: D::DEFAULT_BLOCK_SIZE,
+            block_frames: D::DEFAULT_BLOCK_FRAMES,
             num_cache_blocks: D::DEFAULT_NUM_CACHE_BLOCKS,
             additional_opts: Default::default(),
             num_look_ahead_blocks: D::DEFAULT_NUM_LOOK_AHEAD_BLOCKS,

@@ -1,11 +1,10 @@
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::path::PathBuf;
 
-use super::data::{DataBlockCacheEntry, DataBlockEntry};
+use super::data::{AudioBlockCacheEntry, AudioBlockEntry, HeapData};
 use super::error::{FatalReadError, ReadError};
 use super::{
-    ClientToServerMsg, DataBlock, Decoder, HeapData, ReadData, ReadServer, ReadStreamOptions,
-    ServerToClientMsg,
+    AudioBlock, ClientToServerMsg, Decoder, ReadServer, ReadStreamOptions, ServerToClientMsg,
 };
 use crate::{FileInfo, BLOCKING_POLL_INTERVAL};
 
@@ -53,7 +52,7 @@ pub struct ReadDiskStream<D: Decoder> {
     num_prefetch_blocks: usize,
     prefetch_size: usize,
     cache_size: usize,
-    block_size: usize,
+    block_frames: usize,
 
     file_info: FileInfo<D::FileParams>,
     fatal_error: bool,
@@ -70,9 +69,10 @@ impl<D: Decoder> ReadDiskStream<D> {
         start_frame: usize,
         stream_opts: ReadStreamOptions<D>,
     ) -> Result<ReadDiskStream<D>, D::OpenError> {
-        assert_ne!(stream_opts.block_size, 0);
+        assert_ne!(stream_opts.block_frames, 0);
         assert_ne!(stream_opts.num_look_ahead_blocks, 0);
         assert_ne!(stream_opts.server_msg_channel_size, Some(0));
+        assert!(stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks > 2);
 
         // Reserve ample space for the message channels.
         let msg_channel_size = stream_opts.server_msg_channel_size.unwrap_or(
@@ -99,7 +99,7 @@ impl<D: Decoder> ReadDiskStream<D> {
             file,
             start_frame,
             stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks,
-            stream_opts.block_size,
+            stream_opts.block_frames,
             poll_interval,
             to_client_tx,
             from_client_rx,
@@ -115,7 +115,7 @@ impl<D: Decoder> ReadDiskStream<D> {
                     stream_opts.num_cache_blocks,
                     stream_opts.num_look_ahead_blocks,
                     stream_opts.num_caches,
-                    stream_opts.block_size,
+                    stream_opts.block_frames,
                     file_info,
                 );
 
@@ -126,7 +126,7 @@ impl<D: Decoder> ReadDiskStream<D> {
     }
 
     #[allow(clippy::too_many_arguments)] // TODO: Reduce number of arguments
-    pub(crate) fn create(
+    fn create(
         to_server_tx: Producer<ClientToServerMsg<D>>,
         from_server_rx: Consumer<ServerToClientMsg<D>>,
         close_signal_tx: Producer<Option<HeapData<D::T>>>,
@@ -134,38 +134,37 @@ impl<D: Decoder> ReadDiskStream<D> {
         num_cache_blocks: usize,
         num_look_ahead_blocks: usize,
         max_num_caches: usize,
-        block_size: usize,
+        block_frames: usize,
         file_info: FileInfo<D::FileParams>,
     ) -> Self {
         let num_prefetch_blocks = num_cache_blocks + num_look_ahead_blocks;
 
-        let read_buffer = DataBlock::new(usize::from(file_info.num_channels), block_size);
+        let read_buffer = AudioBlock::new(usize::from(file_info.num_channels), block_frames);
 
         // Reserve the last two caches as temporary caches.
         let max_num_caches = max_num_caches + 2;
 
-        let mut caches: Vec<DataBlockCacheEntry<D::T>> = Vec::with_capacity(max_num_caches);
-        for _ in 0..max_num_caches {
-            caches.push(DataBlockCacheEntry {
+        let caches: Vec<AudioBlockCacheEntry<D::T>> = (0..max_num_caches)
+            .map(|_| AudioBlockCacheEntry {
                 cache: None,
                 wanted_start_frame: 0,
-            });
-        }
+            })
+            .collect();
 
         let temp_cache_index = max_num_caches - 1;
         let temp_seek_cache_index = max_num_caches - 2;
 
-        let mut prefetch_buffer: Vec<DataBlockEntry<D::T>> =
-            Vec::with_capacity(num_prefetch_blocks);
         let mut wanted_start_frame = start_frame;
+        let mut prefetch_buffer: Vec<AudioBlockEntry<D::T>> =
+            Vec::with_capacity(num_prefetch_blocks);
         for _ in 0..num_prefetch_blocks {
-            prefetch_buffer.push(DataBlockEntry {
+            prefetch_buffer.push(AudioBlockEntry {
                 use_cache_index: None,
                 block: None,
                 wanted_start_frame,
             });
 
-            wanted_start_frame += block_size;
+            wanted_start_frame += block_frames;
         }
 
         let heap_data = Some(HeapData {
@@ -190,9 +189,9 @@ impl<D: Decoder> ReadDiskStream<D> {
             temp_seek_cache_index,
 
             num_prefetch_blocks,
-            prefetch_size: num_prefetch_blocks * block_size,
-            cache_size: num_cache_blocks * block_size,
-            block_size,
+            prefetch_size: num_prefetch_blocks * block_frames,
+            cache_size: num_cache_blocks * block_frames,
+            block_frames,
 
             file_info,
             fatal_error: false,
@@ -426,12 +425,12 @@ impl<D: Decoder> ReadDiskStream<D> {
             let cache_start_frame = heap.caches[cache_index].wanted_start_frame;
             let mut delta = frame - cache_start_frame;
             let mut block_i = 0;
-            while delta >= self.block_size {
+            while delta >= self.block_frames {
                 block_i += 1;
-                delta -= self.block_size
+                delta -= self.block_frames
             }
 
-            self.current_block_start_frame = cache_start_frame + (block_i * self.block_size);
+            self.current_block_start_frame = cache_start_frame + (block_i * self.block_frames);
             self.current_frame_in_block = delta;
             self.current_block_index = block_i;
             self.next_block_index = block_i + 1;
@@ -463,7 +462,7 @@ impl<D: Decoder> ReadDiskStream<D> {
                 });
                 heap.prefetch_buffer[i].use_cache_index = None;
                 heap.prefetch_buffer[i].wanted_start_frame = wanted_start_frame;
-                wanted_start_frame += self.block_size;
+                wanted_start_frame += self.block_frames;
             }
 
             Ok(true)
@@ -603,17 +602,18 @@ impl<D: Decoder> ReadDiskStream<D> {
             let mut reached_end_of_file = false;
 
             while self.is_ready()? {
-                let read_frames = (buffer_len - frames_written).min(self.block_size);
+                let read_frames = (buffer_len - frames_written).min(self.block_frames);
 
-                let read_data = self.read(read_frames)?;
-                for (i, ch) in buffer.iter_mut().enumerate() {
-                    (*ch)[frames_written..frames_written + read_data.num_frames()]
-                        .copy_from_slice(read_data.read_channel(i));
+                let read_res = self.read(read_frames)?;
+
+                for (dst_ch, src_ch) in buffer.iter_mut().zip(read_res.channels.iter()) {
+                    dst_ch[frames_written..frames_written + read_res.frames]
+                        .copy_from_slice(src_ch);
                 }
 
-                frames_written += read_data.num_frames();
+                frames_written += read_res.frames;
 
-                if read_data.reached_end_of_file() {
+                if read_res.reached_end_of_file {
                     reached_end_of_file = true;
                     break;
                 }
@@ -733,16 +733,16 @@ impl<D: Decoder> ReadDiskStream<D> {
     /// and playback will return silence on each subsequent call to `read()`.
     ///
     /// NOTE: If the number of `frames` exceeds the block size of the decoder, then that block size
-    /// will be used instead. This can be retrieved using `ReadDiskStream::block_size()`.
+    /// will be used instead. This can be retrieved using `ReadDiskStream::block_frames()`.
     pub fn read(
         &mut self,
         mut frames: usize,
-    ) -> Result<ReadData<'_, D::T>, ReadError<D::FatalError>> {
+    ) -> Result<ReadResult<'_, D::T>, ReadError<D::FatalError>> {
         if self.fatal_error {
             return Err(ReadError::FatalError(FatalReadError::StreamClosed));
         }
 
-        frames = frames.min(self.block_size);
+        frames = frames.min(self.block_frames);
 
         self.poll()?;
 
@@ -762,11 +762,11 @@ impl<D: Decoder> ReadDiskStream<D> {
         }
 
         let end_frame_in_block = self.current_frame_in_block + frames;
-        if end_frame_in_block > self.block_size {
+        if end_frame_in_block > self.block_frames {
             // Data spans between two blocks, so two copies need to be performed.
 
             // Copy from first block.
-            let first_len = self.block_size - self.current_frame_in_block;
+            let first_len = self.block_frames - self.current_frame_in_block;
             let second_len = frames - first_len;
             {
                 // This check should never fail because it can only be `None` in the destructor.
@@ -796,11 +796,11 @@ impl<D: Decoder> ReadDiskStream<D> {
                     }
                 };
 
-                for i in 0..heap.read_buffer.block.len() {
-                    let read_buffer_part = &mut heap.read_buffer.block[i][0..first_len];
+                for i in 0..heap.read_buffer.channels.len() {
+                    let read_buffer_part = &mut heap.read_buffer.channels[i][0..first_len];
 
                     if let Some(block) = current_block_data {
-                        let from_buffer_part = &block.block[i]
+                        let from_buffer_part = &block.channels[i]
                             [self.current_frame_in_block..self.current_frame_in_block + first_len];
 
                         read_buffer_part.copy_from_slice(from_buffer_part);
@@ -809,9 +809,6 @@ impl<D: Decoder> ReadDiskStream<D> {
                         read_buffer_part[..first_len].fill_with(Default::default);
                     };
                 }
-
-                // Keep this from growing indefinitely.
-                //self.current_block_start_frame = current_block_start_frame;
             }
 
             self.advance_to_next_block()?;
@@ -845,12 +842,12 @@ impl<D: Decoder> ReadDiskStream<D> {
                     }
                 };
 
-                for i in 0..heap.read_buffer.block.len() {
+                for i in 0..heap.read_buffer.channels.len() {
                     let read_buffer_part =
-                        &mut heap.read_buffer.block[i][first_len..first_len + second_len];
+                        &mut heap.read_buffer.channels[i][first_len..first_len + second_len];
 
                     if let Some(block) = next_block_data {
-                        let from_buffer_part = &block.block[i][0..second_len];
+                        let from_buffer_part = &block.channels[i][0..second_len];
 
                         read_buffer_part.copy_from_slice(from_buffer_part);
                     } else {
@@ -891,11 +888,11 @@ impl<D: Decoder> ReadDiskStream<D> {
                     }
                 };
 
-                for i in 0..heap.read_buffer.block.len() {
-                    let read_buffer_part = &mut heap.read_buffer.block[i][0..frames];
+                for i in 0..heap.read_buffer.channels.len() {
+                    let read_buffer_part = &mut heap.read_buffer.channels[i][0..frames];
 
                     if let Some(block) = current_block_data {
-                        let from_buffer_part = &block.block[i]
+                        let from_buffer_part = &block.channels[i]
                             [self.current_frame_in_block..self.current_frame_in_block + frames];
 
                         read_buffer_part.copy_from_slice(from_buffer_part);
@@ -907,7 +904,7 @@ impl<D: Decoder> ReadDiskStream<D> {
             }
 
             self.current_frame_in_block = end_frame_in_block;
-            if self.current_frame_in_block == self.block_size {
+            if self.current_frame_in_block == self.block_frames {
                 self.advance_to_next_block()?;
                 self.current_frame_in_block = 0;
             }
@@ -917,11 +914,11 @@ impl<D: Decoder> ReadDiskStream<D> {
         let heap = self.heap_data.as_mut().unwrap();
 
         // This check should never fail because it can only be `None` in the destructor.
-        Ok(ReadData::new(
-            &heap.read_buffer,
+        Ok(ReadResult {
+            channels: &heap.read_buffer.channels,
             frames,
             reached_end_of_file,
-        ))
+        })
     }
 
     fn advance_to_next_block(&mut self) -> Result<(), ReadError<D::FatalError>> {
@@ -956,7 +953,7 @@ impl<D: Decoder> ReadDiskStream<D> {
             self.next_block_index = 0;
         }
 
-        self.current_block_start_frame += self.block_size;
+        self.current_block_start_frame += self.block_frames;
 
         Ok(())
     }
@@ -978,8 +975,8 @@ impl<D: Decoder> ReadDiskStream<D> {
     /// Return the block size used by this decoder.
     ///
     /// This is realtime-safe.
-    pub fn block_size(&self) -> usize {
-        self.block_size
+    pub fn block_frames(&self) -> usize {
+        self.block_frames
     }
 }
 
@@ -989,4 +986,13 @@ impl<D: Decoder> Drop for ReadDiskStream<D> {
         // This cannot fail because this is the only place the signal is ever sent.
         let _ = self.close_signal_tx.push(self.heap_data.take());
     }
+}
+
+/// The sample data returned by a `ReadClient`.
+pub struct ReadResult<'a, T: Copy + Clone + Default + Send> {
+    pub channels: &'a [Vec<T>],
+    pub frames: usize,
+    /// This is true if the last frame in this data is the end of the file,
+    /// false otherwise.
+    pub reached_end_of_file: bool,
 }

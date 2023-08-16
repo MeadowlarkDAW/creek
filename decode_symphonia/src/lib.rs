@@ -16,7 +16,8 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::{Metadata, MetadataOptions, MetadataRevision};
 use symphonia::core::probe::Hint;
 
-use creek_core::{DataBlock, Decoder, FileInfo};
+use creek_core::read::Decoder;
+use creek_core::{AudioBlock, FileInfo};
 
 mod error;
 pub use error::OpenError;
@@ -31,7 +32,7 @@ pub struct SymphoniaDecoder {
     num_frames: usize,
     num_channels: usize,
     sample_rate: Option<u32>,
-    block_size: usize,
+    block_frames: usize,
 
     current_frame: usize,
     reset_smp_buffer: bool,
@@ -44,7 +45,7 @@ impl Decoder for SymphoniaDecoder {
     type FatalError = Error;
     type AdditionalOpts = ();
 
-    const DEFAULT_BLOCK_SIZE: usize = 16384;
+    const DEFAULT_BLOCK_FRAMES: usize = 16384;
     const DEFAULT_NUM_CACHE_BLOCKS: usize = 0;
     const DEFAULT_NUM_LOOK_AHEAD_BLOCKS: usize = 8;
     const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(1);
@@ -52,7 +53,7 @@ impl Decoder for SymphoniaDecoder {
     fn new(
         file: PathBuf,
         start_frame: usize,
-        block_size: usize,
+        block_frames: usize,
         _poll_interval: Duration,
         _additional_opts: Self::AdditionalOpts,
     ) -> Result<(Self, FileInfo<Self::FileParams>), Self::OpenError> {
@@ -181,7 +182,7 @@ impl Decoder for SymphoniaDecoder {
                 num_frames,
                 num_channels,
                 sample_rate,
-                block_size,
+                block_frames,
 
                 current_frame: start_frame,
                 reset_smp_buffer: false,
@@ -232,19 +233,20 @@ impl Decoder for SymphoniaDecoder {
         Ok(())
     }
 
-    unsafe fn decode(
-        &mut self,
-        data_block: &mut DataBlock<Self::T>,
-    ) -> Result<(), Self::FatalError> {
+    fn decode(&mut self, block: &mut AudioBlock<Self::T>) -> Result<(), Self::FatalError> {
         if self.current_frame >= self.num_frames {
-            // Do nothing if reached the end of the file.
+            // Fill with zeros if reached the end of the file.
+            for ch in block.channels.iter_mut() {
+                ch.fill(Default::default());
+            }
+
             return Ok(());
         }
 
         let mut reached_end_of_file = false;
 
         let mut block_start = 0;
-        while block_start < self.block_size {
+        while block_start < self.block_frames {
             let num_frames_to_cpy = if self.reset_smp_buffer {
                 // Get new data first.
                 self.reset_smp_buffer = false;
@@ -254,14 +256,14 @@ impl Decoder for SymphoniaDecoder {
                 0
             } else {
                 // Find the maximum amount of frames that can be copied.
-                (self.block_size - block_start)
+                (self.block_frames - block_start)
                     .min((self.smp_buf.len() - self.curr_smp_buf_i) / self.num_channels)
             };
 
             if num_frames_to_cpy != 0 {
                 if self.num_channels == 1 {
                     // Mono, no need to deinterleave.
-                    data_block.block[0][block_start..block_start + num_frames_to_cpy]
+                    block.channels[0][block_start..block_start + num_frames_to_cpy]
                         .copy_from_slice(
                             &self.smp_buf.samples()
                                 [self.curr_smp_buf_i..self.curr_smp_buf_i + num_frames_to_cpy],
@@ -272,21 +274,21 @@ impl Decoder for SymphoniaDecoder {
                     let smp_buf = &self.smp_buf.samples()
                         [self.curr_smp_buf_i..self.curr_smp_buf_i + (num_frames_to_cpy * 2)];
 
-                    let (block1, block2) = data_block.block.split_at_mut(1);
-                    let block1 = &mut block1[0][block_start..block_start + num_frames_to_cpy];
-                    let block2 = &mut block2[0][block_start..block_start + num_frames_to_cpy];
+                    let (ch1, ch2) = block.channels.split_at_mut(1);
+                    let ch1 = &mut ch1[0][block_start..block_start + num_frames_to_cpy];
+                    let ch2 = &mut ch2[0][block_start..block_start + num_frames_to_cpy];
 
                     for i in 0..num_frames_to_cpy {
-                        block1[i] = smp_buf[i * 2];
-                        block2[i] = smp_buf[i * 2 + 1];
+                        ch1[i] = smp_buf[i * 2];
+                        ch2[i] = smp_buf[i * 2 + 1];
                     }
                 } else {
                     let smp_buf = &self.smp_buf.samples()[self.curr_smp_buf_i
                         ..self.curr_smp_buf_i + (num_frames_to_cpy * self.num_channels)];
 
                     for i in 0..num_frames_to_cpy {
-                        for (ch, block) in data_block.block.iter_mut().enumerate() {
-                            block[block_start + i] = smp_buf[i * self.num_channels + ch];
+                        for (ch_i, ch) in block.channels.iter_mut().enumerate() {
+                            ch[block_start + ch_i] = smp_buf[i * self.num_channels + ch_i];
                         }
                     }
                 }
@@ -326,7 +328,7 @@ impl Decoder for SymphoniaDecoder {
                                 if io_error.kind() == std::io::ErrorKind::UnexpectedEof {
                                     // End of file, stop decoding.
                                     reached_end_of_file = true;
-                                    block_start = self.block_size;
+                                    block_start = self.block_frames;
                                     break;
                                 } else {
                                     return Err(e);
@@ -343,7 +345,7 @@ impl Decoder for SymphoniaDecoder {
         if reached_end_of_file {
             self.current_frame = self.num_frames;
         } else {
-            self.current_frame += self.block_size;
+            self.current_frame += self.block_frames;
         }
 
         Ok(())
@@ -409,7 +411,7 @@ mod tests {
             let decoder = SymphoniaDecoder::new(
                 file.0.into(),
                 0,
-                SymphoniaDecoder::DEFAULT_BLOCK_SIZE,
+                SymphoniaDecoder::DEFAULT_BLOCK_FRAMES,
                 SymphoniaDecoder::DEFAULT_POLL_INTERVAL,
                 (),
             );
@@ -428,25 +430,23 @@ mod tests {
 
     #[test]
     fn decode_first_frame() {
-        let block_size = 10;
+        let block_frames = 10;
 
         let decoder = SymphoniaDecoder::new(
             "../test_files/wav_u8_mono.wav".into(),
             0,
-            block_size,
+            block_frames,
             SymphoniaDecoder::DEFAULT_POLL_INTERVAL,
             (),
         );
 
         let (mut decoder, file_info) = decoder.unwrap();
 
-        let mut data_block = DataBlock::new(1, block_size);
-        unsafe {
-            decoder.decode(&mut data_block).unwrap();
-        }
+        let mut block = AudioBlock::new(1, block_frames);
+        decoder.decode(&mut block).unwrap();
 
-        let samples = &mut data_block.block[0];
-        assert_eq!(samples.len(), block_size);
+        let samples = &mut block.channels[0];
+        assert_eq!(samples.len(), block_frames);
 
         let first_frame = [
             0.0, 0.046875, 0.09375, 0.1484375, 0.1953125, 0.2421875, 0.2890625, 0.3359375,
@@ -462,11 +462,9 @@ mod tests {
             0.71875, 0.7421875,
         ];
 
-        unsafe {
-            decoder.decode(&mut data_block).unwrap();
-        }
+        decoder.decode(&mut block).unwrap();
 
-        let samples = &mut data_block.block[0];
+        let samples = &mut block.channels[0];
         for i in 0..samples.len() {
             assert_approx_eq!(f32, second_frame[i], samples[i], ulps = 2);
         }
@@ -477,12 +475,12 @@ mod tests {
         ];
 
         // Seek to last frame
-        decoder.seek(file_info.num_frames - 1 - block_size).unwrap();
+        decoder
+            .seek(file_info.num_frames - 1 - block_frames)
+            .unwrap();
 
-        unsafe {
-            decoder.decode(&mut data_block).unwrap();
-        }
-        let samples = &mut data_block.block[0];
+        decoder.decode(&mut block).unwrap();
+        let samples = &mut block.channels[0];
         for i in 0..samples.len() {
             assert_approx_eq!(f32, last_frame[i], samples[i], ulps = 2);
         }

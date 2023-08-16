@@ -2,22 +2,23 @@ use std::{path::PathBuf, time::Duration};
 
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use super::{ClientToServerMsg, DataBlock, DataBlockCache, Decoder, HeapData, ServerToClientMsg};
+use super::data::HeapData;
+use super::{AudioBlock, AudioBlockCache, ClientToServerMsg, Decoder, ServerToClientMsg};
 use crate::{FileInfo, BLOCKING_POLL_INTERVAL};
 
-pub(crate) struct ReadServer<D: Decoder> {
+pub(super) struct ReadServer<D: Decoder> {
     to_client_tx: Producer<ServerToClientMsg<D>>,
     from_client_rx: Consumer<ClientToServerMsg<D>>,
     close_signal_rx: Consumer<Option<HeapData<D::T>>>,
 
     decoder: D,
 
-    block_pool: Vec<DataBlock<D::T>>,
-    cache_pool: Vec<DataBlockCache<D::T>>,
+    block_pool: Vec<AudioBlock<D::T>>,
+    cache_pool: Vec<AudioBlockCache<D::T>>,
 
     num_channels: usize,
     num_prefetch_blocks: usize,
-    block_size: usize,
+    block_frames: usize,
 
     run: bool,
     client_closed: bool,
@@ -27,11 +28,11 @@ pub(crate) struct ReadServer<D: Decoder> {
 impl<D: Decoder> ReadServer<D> {
     #[allow(clippy::new_ret_no_self)] // TODO: Rename to `spawn` (breaking API change)
     #[allow(clippy::too_many_arguments)] // TODO: Reduce number of arguments
-    pub(crate) fn new(
+    pub(super) fn new(
         file: PathBuf,
         start_frame: usize,
         num_prefetch_blocks: usize,
-        block_size: usize,
+        block_frames: usize,
         poll_interval: Duration,
         to_client_tx: Producer<ServerToClientMsg<D>>,
         from_client_rx: Consumer<ClientToServerMsg<D>>,
@@ -45,7 +46,7 @@ impl<D: Decoder> ReadServer<D> {
             match D::new(
                 file,
                 start_frame,
-                block_size,
+                block_frames,
                 poll_interval,
                 additional_opts,
             ) {
@@ -64,7 +65,7 @@ impl<D: Decoder> ReadServer<D> {
                         cache_pool: Vec::new(),
                         num_channels: usize::from(num_channels),
                         num_prefetch_blocks,
-                        block_size,
+                        block_frames,
                         run: true,
                         client_closed: false,
                         poll_interval,
@@ -88,7 +89,7 @@ impl<D: Decoder> ReadServer<D> {
 
     fn run(mut self) {
         #[allow(clippy::type_complexity)] // TODO: Use a dedicated type for the elements
-        let mut cache_requests: Vec<(usize, Option<DataBlockCache<D::T>>, usize)> = Vec::new();
+        let mut cache_requests: Vec<(usize, Option<AudioBlockCache<D::T>>, usize)> = Vec::new();
 
         while self.run {
             let mut do_sleep = true;
@@ -113,13 +114,11 @@ impl<D: Decoder> ReadServer<D> {
                             // Try using one in the pool if it exists.
                             self.block_pool.pop().unwrap_or(
                                 // No blocks in pool. Create a new one.
-                                DataBlock::new(self.num_channels, self.block_size),
+                                AudioBlock::new(self.num_channels, self.block_frames),
                             ),
                         );
 
-                        // Safe because we assume that the decoder will correctly fill the block
-                        // with data.
-                        let decode_res = unsafe { self.decoder.decode(&mut block) };
+                        let decode_res = self.decoder.decode(&mut block);
 
                         match decode_res {
                             Ok(()) => {
@@ -169,10 +168,10 @@ impl<D: Decoder> ReadServer<D> {
                     // Try using one in the pool if it exists.
                     self.cache_pool.pop().unwrap_or(
                         // No caches in pool. Create a new one.
-                        DataBlockCache::new(
+                        AudioBlockCache::new(
                             self.num_channels,
                             self.num_prefetch_blocks,
-                            self.block_size,
+                            self.block_frames,
                         ),
                     ),
                 );
@@ -189,9 +188,7 @@ impl<D: Decoder> ReadServer<D> {
 
                 // Fill the cache
                 for block in cache.blocks.iter_mut() {
-                    // Safe because we assume that the decoder will correctly fill the block
-                    // with data.
-                    let decode_res = unsafe { self.decoder.decode(block) };
+                    let decode_res = self.decoder.decode(block);
 
                     if let Err(e) = decode_res {
                         self.send_msg(ServerToClientMsg::FatalError(e));

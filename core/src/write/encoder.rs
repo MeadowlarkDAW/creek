@@ -3,8 +3,7 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use super::WriteBlock;
-use crate::FileInfo;
+use crate::{AudioBlock, FileInfo};
 
 /// The return status of writing to a file.
 #[derive(Debug, Clone, Copy)]
@@ -39,7 +38,7 @@ pub trait Encoder: Sized + 'static {
     type FatalError: Error + Send;
 
     /// The default number of frames in a write block.
-    const DEFAULT_BLOCK_SIZE: usize;
+    const DEFAULT_BLOCK_FRAMES: usize;
 
     /// The default number of write blocks. This must be sufficiently large to
     /// ensure there are enough write blocks for the client in the worst case
@@ -54,14 +53,14 @@ pub trait Encoder: Sized + 'static {
     /// * `file` - The path of the file to open.
     /// * `num_channels` - The number of audio channels in the file.
     /// * `sample_rate` - The sample rate of the audio data.
-    /// * `block_size` - The block size to use.
+    /// * `block_frames` - The block size to use.
     /// * `max_num_write_blocks` - The number of write blocks this stream is using.
     /// * `additional_opts` - Any additional encoder-specific options.
     fn new(
         file: PathBuf,
         num_channels: u16,
         sample_rate: u32,
-        block_size: usize,
+        block_frames: usize,
         num_write_blocks: usize,
         poll_interval: Duration,
         additional_opts: Self::AdditionalOpts,
@@ -77,17 +76,7 @@ pub trait Encoder: Sized + 'static {
     /// the file name (i.e. "_001" for the first file, "_002" for the second, etc.)
     /// This helper function `num_files_to_file_name_extension()` can be used to find
     /// this extension.
-    ///
-    /// # Safety
-    ///
-    /// This is marked as `unsafe` because a `data_block` may be uninitialized, causing
-    /// undefined behavior if unwritten data from the block is read. Please use the value
-    /// from `write_block.num_frames()` to know how many frames in the block are valid.
-    /// (valid frames are from `[0..num_frames]`)
-    unsafe fn encode(
-        &mut self,
-        write_block: &WriteBlock<Self::T>,
-    ) -> Result<WriteStatus, Self::FatalError>;
+    fn encode(&mut self, block: &AudioBlock<Self::T>) -> Result<WriteStatus, Self::FatalError>;
 
     /// Finish up the file and then close it.
     fn finish_file(&mut self) -> Result<(), Self::FatalError>;

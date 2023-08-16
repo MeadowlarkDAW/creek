@@ -25,14 +25,14 @@ pub enum WriteError<FatalEncoderError: Error> {
     /// to the file.
     Underflow,
     /// The given buffer is too long. The length of the buffer cannot exceed
-    /// `block_size`. The value of `block_size` can be retrieved using
-    /// `WriteDiskStream::block_size()`.
+    /// `block_frames`. The value of `block_frames` can be retrieved using
+    /// `WriteDiskStream::block_frames()`.
     ///
     /// If this is returned, then no data in the given buffer will be written
     /// to the file.
     BufferTooLong {
         buffer_len: usize,
-        block_size: usize,
+        block_frames: usize,
     },
     /// The given buffer does not match the internal layout of the stream. Check
     /// that the number of channels in both are the same.
@@ -62,7 +62,7 @@ impl<FatalError: Error> std::fmt::Display for WriteError<FatalError> {
                 }
             }
             WriteError::Underflow => write!(f, "Data could not be written because there are no more blocks left in the pool. Please make sure the number of write blocks allocated to this stream is sufficiently large enough."),
-            WriteError::BufferTooLong { buffer_len, block_size } => write!(f, "Buffer with len {} is longer than the block size {}", buffer_len, block_size),
+            WriteError::BufferTooLong { buffer_len, block_frames } => write!(f, "Buffer with len {} is longer than the block size {}", buffer_len, block_frames),
             WriteError::InvalidBuffer => write!(f, "Buffer does not match internal buffer layout"),
             WriteError::IOServerChannelFull => write!(f, "The message channel to the IO server is full."),
         }

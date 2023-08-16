@@ -11,7 +11,8 @@ use std::{
     io::{Seek, SeekFrom, Write},
 };
 
-use creek_core::{write, Encoder, FileInfo, WriteBlock, WriteStatus};
+use crate::write::{Encoder, WriteStatus};
+use creek_core::{write, AudioBlock, FileInfo};
 
 pub mod error;
 mod header;
@@ -98,7 +99,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
     type OpenError = WavOpenError;
     type FatalError = WavFatalError;
 
-    const DEFAULT_BLOCK_SIZE: usize = 32768;
+    const DEFAULT_BLOCK_FRAMES: usize = 32768;
     const DEFAULT_NUM_WRITE_BLOCKS: usize = 8;
     const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
@@ -106,8 +107,8 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
         path: PathBuf,
         num_channels: u16,
         sample_rate: u32,
-        block_size: usize,
-        _num_write_blocks: usize,
+        block_frames: usize,
+        _num_blocks: usize,
         _poll_interval: Duration,
         _additional_opts: Self::AdditionalOpts,
     ) -> Result<(Self, FileInfo<Self::FileParams>), Self::OpenError> {
@@ -123,7 +124,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
         file.write_all(header.buffer())?;
         file.flush()?;
 
-        let buf_len = usize::from(num_channels) * block_size;
+        let buf_len = usize::from(num_channels) * block_frames;
         let mut interleave_buf: Vec<B::T> = Vec::with_capacity(buf_len);
         // Safe because data will always be written to before it is read.
         #[allow(clippy::uninit_vec)] // TODO
@@ -143,10 +144,10 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                 frames_written: 0,
                 bytes_per_frame,
                 max_file_bytes,
-                max_block_bytes: block_size as u64 * bytes_per_frame,
+                max_block_bytes: block_frames as u64 * bytes_per_frame,
                 num_channels: usize::from(num_channels),
                 num_files: 1,
-                bit_depth: B::new(block_size, num_channels),
+                bit_depth: B::new(block_frames, num_channels),
             },
             FileInfo {
                 num_frames: 0,
@@ -157,50 +158,47 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
         ))
     }
 
-    unsafe fn encode(
-        &mut self,
-        write_block: &WriteBlock<Self::T>,
-    ) -> Result<WriteStatus, Self::FatalError> {
+    fn encode(&mut self, block: &AudioBlock<Self::T>) -> Result<WriteStatus, Self::FatalError> {
         let mut status = WriteStatus::Ok;
 
         if let Some(mut file) = self.file.take() {
-            let written_frames = write_block.written_frames();
+            let frames_written = block.frames_written();
 
             if self.num_channels == 1 {
                 self.bit_depth
-                    .write_to_disk(&write_block.block()[0][0..written_frames], &mut file)?;
+                    .write_to_disk(&block.channels[0][0..frames_written], &mut file)?;
             } else {
                 if self.num_channels == 2 {
                     // Hint to compiler to optimize loop
-                    assert!(written_frames <= write_block.block()[0].len());
-                    assert!(written_frames <= write_block.block()[1].len());
-                    assert!(written_frames * 2 <= self.interleave_buf.len());
+                    assert!(frames_written <= block.channels[0].len());
+                    assert!(frames_written <= block.channels[1].len());
+                    assert!(frames_written * 2 <= self.interleave_buf.len());
 
-                    for frame in 0..written_frames {
-                        self.interleave_buf[frame * 2] = write_block.block()[0][frame];
-                        self.interleave_buf[frame * 2 + 1] = write_block.block()[1][frame];
+                    for frame in 0..frames_written {
+                        self.interleave_buf[frame * 2] = block.channels[0][frame];
+                        self.interleave_buf[frame * 2 + 1] = block.channels[1][frame];
                     }
                 } else {
                     // Hint to compiler to optimize loop
-                    assert!(written_frames * self.num_channels <= self.interleave_buf.len());
-                    for block in write_block.block() {
-                        assert!(written_frames <= block.len());
+                    assert!(frames_written * self.num_channels <= self.interleave_buf.len());
+                    for ch in block.channels.iter() {
+                        assert!(frames_written <= ch.len());
                     }
 
-                    for frame in 0..written_frames {
-                        for (ch, block) in write_block.block().iter().enumerate() {
+                    for frame in 0..frames_written {
+                        for (ch, block) in block.channels.iter().enumerate() {
                             self.interleave_buf[frame * self.num_channels + ch] = block[frame];
                         }
                     }
                 }
 
                 self.bit_depth.write_to_disk(
-                    &self.interleave_buf[0..written_frames * self.num_channels],
+                    &self.interleave_buf[0..frames_written * self.num_channels],
                     &mut file,
                 )?;
             }
 
-            self.frames_written += written_frames as u32;
+            self.frames_written += frames_written as u32;
             let bytes_written = u64::from(self.frames_written) * self.bytes_per_frame;
 
             self.header.set_num_frames(self.frames_written);

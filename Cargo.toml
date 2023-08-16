@@ -25,8 +25,8 @@ members = [
 ]
 
 [features]
-default = ["decode", "encode-wav"]
-decode = [ "creek-decode-symphonia" ]
+default = ["decode-symphonia", "encode-wav"]
+decode-symphonia = [ "creek-decode-symphonia" ]
 decode-aac = [ "creek-decode-symphonia/aac" ]
 decode-alac = [ "creek-decode-symphonia/alac" ]
 decode-flac = [ "creek-decode-symphonia/flac" ]

@@ -1,10 +1,10 @@
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::path::PathBuf;
 
+use super::data::HeapData;
 use super::error::{FatalWriteError, WriteError};
 use super::{
-    ClientToServerMsg, Encoder, HeapData, ServerToClientMsg, WriteBlock, WriteServer,
-    WriteStreamOptions,
+    ClientToServerMsg, Encoder, ServerToClientMsg, WriteBlock, WriteServer, WriteStreamOptions,
 };
 use crate::{FileInfo, BLOCKING_POLL_INTERVAL};
 
@@ -16,7 +16,7 @@ pub struct WriteDiskStream<E: Encoder> {
 
     heap_data: Option<HeapData<E::T>>,
 
-    block_size: usize,
+    block_frames: usize,
 
     file_info: FileInfo<E::FileParams>,
     restart_count: usize,
@@ -42,8 +42,8 @@ impl<E: Encoder> WriteDiskStream<E> {
     ) -> Result<WriteDiskStream<E>, E::OpenError> {
         assert_ne!(num_channels, 0);
         assert_ne!(sample_rate, 0);
-        assert_ne!(stream_opts.block_size, 0);
-        assert_ne!(stream_opts.num_write_blocks, 0);
+        assert_ne!(stream_opts.block_frames, 0);
+        assert!(stream_opts.num_write_blocks > 2);
         assert_ne!(stream_opts.server_msg_channel_size, Some(0));
 
         // Reserve ample space for the message channels.
@@ -65,10 +65,10 @@ impl<E: Encoder> WriteDiskStream<E> {
 
         let file: PathBuf = file.into();
 
-        match WriteServer::new(
+        match WriteServer::spawn(
             file,
             stream_opts.num_write_blocks,
-            stream_opts.block_size,
+            stream_opts.block_frames,
             num_channels,
             sample_rate,
             poll_interval,
@@ -83,7 +83,7 @@ impl<E: Encoder> WriteDiskStream<E> {
                     from_server_rx,
                     close_signal_tx,
                     stream_opts.num_write_blocks,
-                    stream_opts.block_size,
+                    stream_opts.block_frames,
                     file_info,
                 );
 
@@ -93,21 +93,20 @@ impl<E: Encoder> WriteDiskStream<E> {
         }
     }
 
-    pub(crate) fn create(
+    fn create(
         to_server_tx: Producer<ClientToServerMsg<E>>,
         from_server_rx: Consumer<ServerToClientMsg<E>>,
         close_signal_tx: Producer<Option<HeapData<E::T>>>,
         num_write_blocks: usize,
-        block_size: usize,
+        block_frames: usize,
         file_info: FileInfo<E::FileParams>,
     ) -> Self {
-        let mut block_pool: Vec<WriteBlock<E::T>> = Vec::with_capacity(num_write_blocks);
-        for _ in 0..num_write_blocks - 2 {
-            block_pool.push(WriteBlock::new(
-                usize::from(file_info.num_channels),
-                block_size,
-            ));
-        }
+        let mut block_pool: Vec<WriteBlock<E::T>> = (0..num_write_blocks)
+            .map(|_| WriteBlock::new(usize::from(file_info.num_channels), block_frames))
+            .collect();
+
+        let current_block = block_pool.pop();
+        let next_block = block_pool.pop();
 
         Self {
             to_server_tx,
@@ -116,17 +115,11 @@ impl<E: Encoder> WriteDiskStream<E> {
 
             heap_data: Some(HeapData {
                 block_pool,
-                current_block: Some(WriteBlock::new(
-                    usize::from(file_info.num_channels),
-                    block_size,
-                )),
-                next_block: Some(WriteBlock::new(
-                    usize::from(file_info.num_channels),
-                    block_size,
-                )),
+                current_block,
+                next_block,
             }),
 
-            block_size,
+            block_frames,
 
             file_info,
             restart_count: 0,
@@ -198,10 +191,10 @@ impl<E: Encoder> WriteDiskStream<E> {
         }
         // Check buffer sizes.
         let buffer_len = buffer[0].len();
-        if buffer_len > self.block_size {
+        if buffer_len > self.block_frames {
             return Err(WriteError::BufferTooLong {
                 buffer_len,
-                block_size: self.block_size,
+                block_frames: self.block_frames,
             });
         }
         for ch in buffer.iter().skip(1) {
@@ -223,18 +216,20 @@ impl<E: Encoder> WriteDiskStream<E> {
         // Check that there are available blocks to write to.
         if let Some(mut current_block) = heap.current_block.take() {
             if let Some(mut next_block) = heap.next_block.take() {
-                if current_block.written_frames + buffer_len > self.block_size {
+                if current_block.block.frames_written + buffer_len > self.block_frames {
                     // Need to copy to two blocks.
 
-                    let first_len = self.block_size - current_block.written_frames;
+                    let first_len = self.block_frames - current_block.block.frames_written;
                     let second_len = buffer_len - first_len;
 
                     // Copy into first block.
-                    for (buffer_ch, write_ch) in buffer.iter().zip(current_block.block.iter_mut()) {
-                        write_ch[current_block.written_frames..]
+                    for (buffer_ch, write_ch) in
+                        buffer.iter().zip(current_block.block.channels.iter_mut())
+                    {
+                        write_ch[current_block.block.frames_written..]
                             .copy_from_slice(&buffer_ch[0..first_len]);
                     }
-                    current_block.written_frames = self.block_size;
+                    current_block.block.frames_written = self.block_frames;
 
                     // Send the now filled block to the IO server for writing.
                     // This cannot fail because we made sure there was a slot open in
@@ -245,10 +240,12 @@ impl<E: Encoder> WriteDiskStream<E> {
                     });
 
                     // Copy the remaining data into the second block.
-                    for (buffer_ch, write_ch) in buffer.iter().zip(next_block.block.iter_mut()) {
+                    for (buffer_ch, write_ch) in
+                        buffer.iter().zip(next_block.block.channels.iter_mut())
+                    {
                         write_ch[0..second_len].copy_from_slice(&buffer_ch[first_len..]);
                     }
-                    next_block.written_frames = second_len;
+                    next_block.block.frames_written = second_len;
 
                     // Move the next-up block into the current block.
                     heap.current_block = Some(next_block);
@@ -258,14 +255,17 @@ impl<E: Encoder> WriteDiskStream<E> {
                 } else {
                     // Only need to copy to first block.
 
-                    let end = current_block.written_frames + buffer_len;
+                    let end = current_block.block.frames_written + buffer_len;
 
-                    for (buffer_ch, write_ch) in buffer.iter().zip(current_block.block.iter_mut()) {
-                        write_ch[current_block.written_frames..end].copy_from_slice(buffer_ch);
+                    for (buffer_ch, write_ch) in
+                        buffer.iter().zip(current_block.block.channels.iter_mut())
+                    {
+                        write_ch[current_block.block.frames_written..end]
+                            .copy_from_slice(buffer_ch);
                     }
-                    current_block.written_frames = end;
+                    current_block.block.frames_written = end;
 
-                    if current_block.written_frames == self.block_size {
+                    if current_block.block.frames_written == self.block_frames {
                         // Block is filled. Sent it to the IO server for writing.
                         // This cannot fail because we made sure there was a slot open in
                         // a previous step.
@@ -368,7 +368,7 @@ impl<E: Encoder> WriteDiskStream<E> {
         let heap = self.heap_data.as_mut().unwrap();
 
         if let Some(block) = &mut heap.current_block {
-            block.written_frames = 0;
+            block.block.frames_written = 0;
         }
 
         self.restart_count += 1;

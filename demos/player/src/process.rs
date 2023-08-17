@@ -160,20 +160,14 @@ impl Process {
                     let to_end_of_loop = read_res.frames - (playhead - loop_end);
 
                     if read_res.channels.len() == 1 {
-                        let ch = &read_res.channels[0];
+                        let src_part = &read_res.channels[0][0..to_end_of_loop];
 
-                        for i in 0..to_end_of_loop {
-                            data[i * 2] = ch[i];
-                            data[i * 2 + 1] = ch[i];
-                        }
+                        copy_stereo_into_interleaved_buffer(src_part, src_part, data);
                     } else if read_res.channels.len() == 2 {
-                        let ch1 = &read_res.channels[0];
-                        let ch2 = &read_res.channels[1];
+                        let src_ch_1 = &read_res.channels[0][0..to_end_of_loop];
+                        let src_ch_2 = &read_res.channels[1][0..to_end_of_loop];
 
-                        for i in 0..to_end_of_loop {
-                            data[i * 2] = ch1[i];
-                            data[i * 2 + 1] = ch2[i];
-                        }
+                        copy_stereo_into_interleaved_buffer(src_ch_1, src_ch_2, data);
                     }
 
                     read_disk_stream.seek(self.loop_start, SeekMode::Auto)?;
@@ -182,20 +176,14 @@ impl Process {
                 } else {
                     // Else copy all the read data.
                     if read_res.channels.len() == 1 {
-                        let ch = &read_res.channels[0];
+                        let src_part = &read_res.channels[0][0..read_res.frames];
 
-                        for i in 0..read_res.frames {
-                            data[i * 2] = ch[i];
-                            data[i * 2 + 1] = ch[i];
-                        }
+                        copy_stereo_into_interleaved_buffer(src_part, src_part, data);
                     } else if read_res.channels.len() == 2 {
-                        let ch1 = &read_res.channels[0];
-                        let ch2 = &read_res.channels[1];
+                        let src_ch_1 = &read_res.channels[0][0..read_res.frames];
+                        let src_ch_2 = &read_res.channels[1][0..read_res.frames];
 
-                        for i in 0..read_res.frames {
-                            data[i * 2] = ch1[i];
-                            data[i * 2 + 1] = ch2[i];
-                        }
+                        copy_stereo_into_interleaved_buffer(src_ch_1, src_ch_2, data);
                     }
 
                     data = &mut data[read_res.frames * 2..];
@@ -228,5 +216,15 @@ impl Process {
 fn silence(data: &mut [f32]) {
     for sample in data.iter_mut() {
         *sample = 0.0;
+    }
+}
+
+fn copy_stereo_into_interleaved_buffer(src_ch_1: &[f32], src_ch_2: &[f32], dst: &mut [f32]) {
+    let src_ch_2 = &src_ch_2[0..src_ch_1.len()];
+    let dst = &mut dst[0..src_ch_1.len() * 2];
+
+    for (i, dst_frame) in dst.chunks_exact_mut(2).enumerate() {
+        dst_frame[0] = src_ch_1[i];
+        dst_frame[1] = src_ch_2[i];
     }
 }

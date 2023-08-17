@@ -210,10 +210,7 @@ impl Process {
             }
 
             // Copy data into output.
-            for i in 0..num_frames {
-                data[i * 2] = self.f32_buffer[i];
-                data[i * 2 + 1] = self.f32_buffer[i];
-            }
+            copy_mono_into_interleaved_stereo_buffer(&self.f32_buffer[0..num_frames], data);
 
             // Send data to be written to file.
             if let Some(write_stream) = &mut self.write_stream_u8 {
@@ -266,5 +263,14 @@ impl Process {
 fn silence(data: &mut [f32]) {
     for sample in data.iter_mut() {
         *sample = 0.0;
+    }
+}
+
+fn copy_mono_into_interleaved_stereo_buffer(src: &[f32], dst: &mut [f32]) {
+    let dst = &mut dst[0..src.len() * 2];
+
+    for (i, dst_frame) in dst.chunks_exact_mut(2).enumerate() {
+        dst_frame[0] = src[i];
+        dst_frame[1] = src[i];
     }
 }

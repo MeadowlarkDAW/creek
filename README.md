@@ -91,10 +91,10 @@ if !read_disk_stream.is_ready().unwrap() {
     // reading (which will return silence), or pause playback until the buffer is filled.
 }
 
-let read_data = read_disk_stream.read(num_frames_in_output_buffer).unwrap();
+let read_result = read_disk_stream.read(num_frames_in_output_buffer).unwrap();
 
-println!("{}", read_data.num_frames());
-println!("{}", read_data.num_channels());
+println!("{}", read_result.frames);
+println!("{}", read_result.channels.len());
 
 // Seek to a new position in the file.
 read_disk_stream.seek(50000, SeekMode::Auto};
@@ -105,7 +105,7 @@ assert_eq!(read_dist_stream.playhead(), 50000);
 // Send stereo data to be written to disk.
 
 write_disk_stream.write(
-    &[read_data.read_channel(0), read_data.read_channel(1)]
+    &[read_data.channels[0], read_data.channels[1]]
 ).unwrap();
 ```
 

@@ -15,7 +15,7 @@ jobs:
           - os: ubuntu-latest
             rust: stable
 
-          # The egui dependency in the demos require at least version 1.65
+          # Minimum Supported Rust Version (MSRV)
           - os: ubuntu-latest
             rust: 1.65.0
 

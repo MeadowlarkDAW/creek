@@ -139,12 +139,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
         file.flush()?;
 
         let buf_len = usize::from(num_channels) * block_frames;
-        let mut interleave_buf: Vec<B::T> = Vec::with_capacity(buf_len);
-        // Safe because data will always be written to before it is read.
-        #[allow(clippy::uninit_vec)] // TODO
-        unsafe {
-            interleave_buf.set_len(buf_len);
-        }
+        let interleave_buf: Vec<B::T> = vec![Default::default(); buf_len];
 
         let max_file_bytes = u64::from(header.max_data_bytes());
         let bytes_per_frame = u64::from(num_channels) * u64::from(format.bytes_per_sample());

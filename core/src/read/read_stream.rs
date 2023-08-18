@@ -95,7 +95,7 @@ impl<D: Decoder> ReadDiskStream<D> {
 
         let file: PathBuf = file.into();
 
-        match ReadServer::new(
+        match ReadServer::spawn(
             file,
             start_frame,
             stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks,

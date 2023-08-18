@@ -26,9 +26,8 @@ pub(super) struct ReadServer<D: Decoder> {
 }
 
 impl<D: Decoder> ReadServer<D> {
-    #[allow(clippy::new_ret_no_self)] // TODO: Rename to `spawn` (breaking API change)
     #[allow(clippy::too_many_arguments)] // TODO: Reduce number of arguments
-    pub(super) fn new(
+    pub(super) fn spawn(
         file: PathBuf,
         start_frame: usize,
         num_prefetch_blocks: usize,

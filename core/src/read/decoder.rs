@@ -35,7 +35,7 @@ pub trait Decoder: Sized + 'static {
 
     /// The number of prefetch blocks to store ahead of the cache block. This must be
     /// sufficiently large to ensure enough to time to fill the buffer in the worst
-    /// case latency scenerio.
+    /// case latency scenario.
     const DEFAULT_NUM_LOOK_AHEAD_BLOCKS: usize;
 
     /// The default interval for how often the decoder polls for data.

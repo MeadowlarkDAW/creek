@@ -18,7 +18,7 @@ The stream internally has two types of buffers: a `cache` buffer and `look-ahead
 
 A `cache` buffer is a pre-loaded user-defined range of samples in the file.
 
-The stream can have as many `cache` buffers as desired. A common use case for this is to cache the start of a file or loop region for seamless looping. When seeking to a frame in the file, creek searches if there exists a cache that contains that frame. If one exists, then playback can resume immediately without buffering. 
+The stream can have as many `cache` buffers as desired. A common use case for this is to cache the start of a file or loop region for seamless looping. When seeking to a frame in the file, creek searches if there exists a cache that contains that frame. If one exists, then playback can resume immediately without buffering.
 
 The `look-ahead` buffer is used to automatically load frames ahead of the playhead, ensuring that data will always be ready even in a worse-case IO latency scenario.
 
@@ -114,7 +114,7 @@ write_disk_stream.write(
 - A basic [`player app`] that plays a single wav file with adjustable loop regions.
 - A basic [`writer app`] that records a tone to a wav file.
 
-[`demo player`]: https://github.com/MeadowlarkDAW/creek/tree/main/demos/player
+[`player app`]: https://github.com/MeadowlarkDAW/creek/tree/main/demos/player
 [`writer app`]: https://github.com/MeadowlarkDAW/creek/tree/main/demos/writer
 
 ## Contributing

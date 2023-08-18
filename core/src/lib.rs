@@ -4,6 +4,7 @@
 #![warn(clippy::clone_on_ref_ptr)]
 #![deny(trivial_numeric_casts)]
 
+use std::fmt::Debug;
 use std::time::Duration;
 
 mod audio_block;
@@ -17,8 +18,8 @@ pub use write::{Encoder, WriteDiskStream, WriteStatus, WriteStreamOptions};
 const BLOCKING_POLL_INTERVAL: Duration = Duration::from_millis(1);
 
 /// Info about the file/files.
-#[derive(Clone)]
-pub struct FileInfo<FileParams> {
+#[derive(Debug, Clone)]
+pub struct FileInfo<FileParams: Debug + Clone> {
     /// The total number of frames in the file/files.
     pub num_frames: usize,
     /// The number of channels in the file/files.

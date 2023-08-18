@@ -261,9 +261,7 @@ impl Process {
 }
 
 fn silence(data: &mut [f32]) {
-    for sample in data.iter_mut() {
-        *sample = 0.0;
-    }
+    data.fill(0.0);
 }
 
 fn copy_mono_into_interleaved_stereo_buffer(src: &[f32], dst: &mut [f32]) {

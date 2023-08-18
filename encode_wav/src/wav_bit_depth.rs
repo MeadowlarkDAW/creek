@@ -3,6 +3,7 @@ use byte_slice_cast::AsByteSlice;
 use std::fs::File;
 use std::io::Write;
 
+/// The bit depth (number of bits per sample).
 pub trait WavBitDepth {
     type T: Copy + Clone + Default + Send;
 
@@ -13,6 +14,7 @@ pub trait WavBitDepth {
     fn write_to_disk(&mut self, data: &[Self::T], file: &mut File) -> Result<(), std::io::Error>;
 }
 
+/// 8 bits per sample (unsigned 8-bit integer).
 pub struct Uint8 {}
 
 impl WavBitDepth for Uint8 {
@@ -31,6 +33,7 @@ impl WavBitDepth for Uint8 {
     }
 }
 
+/// 16 bits per sample (signed 16-bit integer).
 pub struct Int16 {}
 
 impl WavBitDepth for Int16 {
@@ -49,6 +52,7 @@ impl WavBitDepth for Int16 {
     }
 }
 
+/// 24 bits per sample (signed 24-bit integer).
 pub struct Int24 {
     cram_buffer: Vec<u8>,
 }
@@ -88,6 +92,7 @@ impl WavBitDepth for Int24 {
     }
 }
 
+/// 32 bits per sample (32-bit floating-point).
 pub struct Float32 {}
 
 impl WavBitDepth for Float32 {
@@ -106,6 +111,7 @@ impl WavBitDepth for Float32 {
     }
 }
 
+/// 64 bits per sample (64-bit floating-point).
 pub struct Float64 {}
 
 impl WavBitDepth for Float64 {

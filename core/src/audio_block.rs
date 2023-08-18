@@ -1,5 +1,8 @@
-/// A prefetch data block.
+/// A block of audio data.
 pub struct AudioBlock<T: Copy + Clone + Default + Send> {
+    /// The buffers of samples, one for each channel.
+    ///
+    /// Do not resize any of these `Vec`s.
     pub channels: Vec<Vec<T>>,
     pub(crate) frames_written: usize,
     block_frames: usize,
@@ -16,7 +19,8 @@ impl<T: Copy + Clone + Default + Send> AudioBlock<T> {
         }
     }
 
-    /// the number of frames written to this block.
+    /// The number of frames written to this block (only relevant for
+    /// write streams).
     pub fn frames_written(&self) -> usize {
         self.frames_written
     }

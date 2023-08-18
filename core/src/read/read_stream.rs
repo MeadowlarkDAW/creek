@@ -990,7 +990,9 @@ impl<D: Decoder> Drop for ReadDiskStream<D> {
 
 /// The sample data returned by a `ReadClient`.
 pub struct ReadResult<'a, T: Copy + Clone + Default + Send> {
+    /// The buffers of samples, one for each channel.
     pub channels: &'a [Vec<T>],
+    /// The number of frames read.
     pub frames: usize,
     /// This is true if the last frame in this data is the end of the file,
     /// false otherwise.

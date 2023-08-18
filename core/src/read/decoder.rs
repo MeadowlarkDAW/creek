@@ -14,7 +14,7 @@ pub trait Decoder: Sized + 'static {
     type AdditionalOpts: Send + Default + Debug;
 
     /// Any additional information on the file.
-    type FileParams: Clone + Send;
+    type FileParams: Debug + Clone + Send;
 
     /// The error type while opening the file.
     type OpenError: Error + Send;
@@ -60,15 +60,15 @@ pub trait Decoder: Sized + 'static {
     /// Decode data into the `block` starting from the read position. This is streaming,
     /// meaning the next call to `decode()` should pick up where the previous left off.
     ///
+    /// The block should be filled entirely with `block_frames` number of frames. If there
+    /// is not enough data to fill it, fill the rest with zeros.
+    ///
+    /// Do not resize any `Vec`s contained in the `block`.
+    ///
     /// If the end of the file is reached, fill data up to the end of the file, then set the
     /// read position to the last frame in the file and do nothing.
-    ///
-    /// The block must be filled entirely. If there is not enough data to fill it, fill the
-    /// rest with zeros.
-    ///
-    /// Do not resize any Vecs contained in the `block`.
     fn decode(&mut self, block: &mut AudioBlock<Self::T>) -> Result<(), Self::FatalError>;
 
-    /// Return the current read position.
-    fn current_frame(&self) -> usize;
+    /// Return the current read position (playhead).
+    fn playhead_frame(&self) -> usize;
 }

@@ -176,7 +176,7 @@ impl<D: Decoder> ReadServer<D> {
                     ),
                 );
 
-                let current_frame = self.decoder.current_frame();
+                let playhead_frame = self.decoder.playhead_frame();
 
                 // Seek to the position the client wants to cache.
                 if let Err(e) = self.decoder.seek(start_frame) {
@@ -199,7 +199,7 @@ impl<D: Decoder> ReadServer<D> {
                 }
 
                 // Seek back to the previous position.
-                if let Err(e) = self.decoder.seek(current_frame) {
+                if let Err(e) = self.decoder.seek(playhead_frame) {
                     self.send_msg(ServerToClientMsg::FatalError(e));
                     self.run = false;
                     do_sleep = false;

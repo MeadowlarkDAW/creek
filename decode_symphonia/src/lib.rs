@@ -22,6 +22,7 @@ use creek_core::{AudioBlock, FileInfo};
 mod error;
 pub use error::OpenError;
 
+/// A decoder for creek that reads from an audio file.
 pub struct SymphoniaDecoder {
     reader: Box<dyn FormatReader>,
     decoder: Box<dyn SymphDecoder>,
@@ -34,7 +35,7 @@ pub struct SymphoniaDecoder {
     sample_rate: Option<u32>,
     block_frames: usize,
 
-    current_frame: usize,
+    playhead_frame: usize,
     reset_decode_buffer: bool,
 }
 
@@ -181,7 +182,7 @@ impl Decoder for SymphoniaDecoder {
                 sample_rate,
                 block_frames,
 
-                current_frame: start_frame,
+                playhead_frame: start_frame,
                 reset_decode_buffer: false,
             },
             file_info,
@@ -191,14 +192,14 @@ impl Decoder for SymphoniaDecoder {
     fn seek(&mut self, frame: usize) -> Result<(), Self::FatalError> {
         if frame >= self.num_frames {
             // Do nothing if out of range.
-            self.current_frame = self.num_frames;
+            self.playhead_frame = self.num_frames;
 
             return Ok(());
         }
 
-        self.current_frame = frame;
+        self.playhead_frame = frame;
 
-        let seconds = self.current_frame as f64 / f64::from(self.sample_rate.unwrap_or(44100));
+        let seconds = self.playhead_frame as f64 / f64::from(self.sample_rate.unwrap_or(44100));
 
         match self.reader.seek(
             SeekMode::Accurate,
@@ -231,7 +232,7 @@ impl Decoder for SymphoniaDecoder {
     }
 
     fn decode(&mut self, block: &mut AudioBlock<Self::T>) -> Result<(), Self::FatalError> {
-        if self.current_frame >= self.num_frames {
+        if self.playhead_frame >= self.num_frames {
             // Fill with zeros if reached the end of the file.
             for ch in block.channels.iter_mut() {
                 ch.fill(Default::default());
@@ -317,16 +318,16 @@ impl Decoder for SymphoniaDecoder {
         }
 
         if reached_end_of_file {
-            self.current_frame = self.num_frames;
+            self.playhead_frame = self.num_frames;
         } else {
-            self.current_frame += self.block_frames;
+            self.playhead_frame += self.block_frames;
         }
 
         Ok(())
     }
 
-    fn current_frame(&self) -> usize {
-        self.current_frame
+    fn playhead_frame(&self) -> usize {
+        self.playhead_frame
     }
 }
 
@@ -351,9 +352,12 @@ impl SymphoniaDecoder {
     }
 }
 
+/// Information about the Symphonia decoder.
 #[derive(Debug, Clone)]
 pub struct SymphoniaDecoderInfo {
+    /// Information about the audio codec.
     pub codec_params: CodecParameters,
+    /// Metadata information in the file.
     pub metadata: Option<MetadataRevision>,
 }
 
@@ -459,6 +463,6 @@ mod tests {
             assert_approx_eq!(f32, last_frame[i], samples[i], ulps = 2);
         }
 
-        assert_eq!(decoder.current_frame, file_info.num_frames - 1);
+        assert_eq!(decoder.playhead_frame, file_info.num_frames - 1);
     }
 }

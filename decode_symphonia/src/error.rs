@@ -1,11 +1,17 @@
 use std::io;
 
+/// An error while opening an audio file.
 #[derive(Debug)]
 pub enum OpenError {
+    /// IO error
     Io(io::Error),
+    /// Format error
     Format(symphonia::core::errors::Error),
+    /// No default track was found in the file.
     NoDefaultTrack,
+    /// Failed to find the number of frames in the file.
     NoNumFrames,
+    /// Failed to find the number of channels in the file
     NoNumChannels,
 }
 

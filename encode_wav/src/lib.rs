@@ -16,32 +16,41 @@ use creek_core::{write, AudioBlock, FileInfo};
 
 pub mod error;
 mod header;
+pub mod wav_bit_depth;
 
 #[cfg(test)]
 mod tests;
-
-pub mod wav_bit_depth;
 
 use error::{WavFatalError, WavOpenError};
 use header::Header;
 use wav_bit_depth::WavBitDepth;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// The type of samples used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FormatType {
+    /// Integer sample type
     Pcm,
+    /// Floating-point sample type
     Float,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// The sample format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
+    /// Unsigned 8-bit integer
     Uint8,
+    /// Signed 16-bit integer
     Int16,
+    /// Signed 24-bit integer
     Int24,
+    /// 32-bit floating point
     Float32,
+    /// 64-bit floating point
     Float64,
 }
 
 impl Format {
+    /// The number of bits per sample.
     pub fn bits_per_sample(&self) -> u16 {
         match self {
             Format::Uint8 => 8,
@@ -52,6 +61,7 @@ impl Format {
         }
     }
 
+    /// The number of bytes per sample.
     pub fn bytes_per_sample(&self) -> u16 {
         match self {
             Format::Uint8 => 1,
@@ -62,6 +72,7 @@ impl Format {
         }
     }
 
+    /// The type of samples.
     pub fn format_type(&self) -> FormatType {
         match self {
             Format::Uint8 => FormatType::Pcm,
@@ -73,11 +84,14 @@ impl Format {
     }
 }
 
-#[derive(Clone)]
+/// Further information about a WAV file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Params {
-    _format: Format,
+    /// The sample format.
+    pub format: Format,
 }
 
+/// An encoder for creek that writes to a WAV file.
 pub struct WavEncoder<B: WavBitDepth + 'static> {
     interleave_buf: Vec<B::T>,
     file: Option<File>,
@@ -153,7 +167,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                 num_frames: 0,
                 num_channels,
                 sample_rate: Some(sample_rate),
-                params: Params { _format: format },
+                params: Params { format },
             },
         ))
     }

@@ -6,7 +6,7 @@ static FACT_DESC: [u8; 4] = 0x66616374u32.to_be_bytes(); // The letters "fact" i
 
 use crate::{Format, FormatType};
 
-pub struct Header {
+pub(crate) struct Header {
     buffer: Vec<u8>,
     num_channels: u16,
     format: Format,

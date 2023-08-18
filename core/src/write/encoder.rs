@@ -29,7 +29,7 @@ pub trait Encoder: Sized + 'static {
     type AdditionalOpts: Send + Default + Debug;
 
     /// Any additional information on the file.
-    type FileParams: Clone + Send;
+    type FileParams: Debug + Clone + Send;
 
     /// The error type while opening the file.
     type OpenError: Error + Send;
@@ -42,7 +42,7 @@ pub trait Encoder: Sized + 'static {
 
     /// The default number of write blocks. This must be sufficiently large to
     /// ensure there are enough write blocks for the client in the worst case
-    /// write latency scenerio.
+    /// write latency scenario.
     const DEFAULT_NUM_WRITE_BLOCKS: usize;
 
     /// The default interval for how often the encoder polls for data.
@@ -68,6 +68,9 @@ pub trait Encoder: Sized + 'static {
 
     /// Write a block of data to the file.
     ///
+    /// The block may contain less written frames than the length of the channel
+    /// `Vec`s, so be sure to only read up to `block.frames_written()`.
+    ///
     /// If the write was successful, return `WriteStatus::Ok`.
     ///
     /// If the codec has a maximum file size (i.e. 4GB for WAV), then keep track of
@@ -76,9 +79,6 @@ pub trait Encoder: Sized + 'static {
     /// the file name (i.e. "_001" for the first file, "_002" for the second, etc.)
     /// This helper function `num_files_to_file_name_extension()` can be used to find
     /// this extension.
-    ///
-    /// The block may contain less written frames than the length of the channel Vecs,
-    /// so be sure to only read up to `block.frames_written()`.
     fn encode(&mut self, block: &AudioBlock<Self::T>) -> Result<WriteStatus, Self::FatalError>;
 
     /// Finish up the file and then close it.

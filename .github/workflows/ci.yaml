@@ -15,9 +15,9 @@ jobs:
           - os: ubuntu-latest
             rust: stable
 
-          # Minimum Supported Rust Version (MSRV)
+          # The egui dependency in the demos require at least version 1.65
           - os: ubuntu-latest
-            rust: 1.64.0
+            rust: 1.65.0
 
     runs-on: ${{ matrix.os }}
     steps:

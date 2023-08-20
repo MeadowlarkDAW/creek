@@ -57,7 +57,9 @@ pub struct ReadStreamOptions<D: Decoder> {
     ///
     /// `[cache_start, cache_start + (num_cache_blocks * block_size))`
     ///
-    /// If this is 0, then the cache is only used when seeked to exactly `cache_start`.
+    /// If this is `0`, then the cache is only used when seeked to exactly `cache_start`.
+    ///
+    /// This will cause a panic if `num_cache_blocks + num_look_ahead_blocks < 3`.
     pub num_cache_blocks: usize,
 
     /// The maximum number of caches that can be active in this stream. Keep in mind each
@@ -74,6 +76,9 @@ pub struct ReadStreamOptions<D: Decoder> {
     /// case latency scenerio.
     ///
     /// This should be left alone unless you know what you are doing.
+    ///
+    /// This will cause a panic if this is set to `0` or if
+    /// `num_cache_blocks + num_look_ahead_blocks < 3`.
     pub num_look_ahead_blocks: usize,
 
     /// The number of frames in a prefetch block.

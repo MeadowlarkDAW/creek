@@ -38,6 +38,8 @@ pub struct WriteStreamOptions<E: Encoder> {
     /// write latency scenerio.
     ///
     /// This should be left alone unless you know what you are doing.
+    ///
+    /// This will cause a panic if set to less than 3.
     pub num_write_blocks: usize,
 
     /// The number of frames in a write block.

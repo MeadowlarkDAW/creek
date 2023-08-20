@@ -1,6 +1,6 @@
 [package]
 name = "creek"
-version = "1.1.0"
+version = "1.1.1"
 authors = ["Billy Messenger <BillyDM@tutamail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -10,13 +10,7 @@ description = "Realtime-safe disk streaming to/from audio files"
 documentation = "https://docs.rs/creek"
 repository = "https://github.com/MeadowlarkDAW/creek"
 readme = "README.md"
-include = [
-    "src/",
-    "COPYRIGHT",
-    "LICENSE-APACHE",
-    "LICENSE-MIT",
-    "how_it_works.svg",
-]
+exclude = ["/test_files"]
 rust-version = "1.62"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -57,9 +51,9 @@ decode-all = [
 encode-wav = ["creek-encode-wav"]
 
 [dependencies]
-creek-core = { version = "0.1", path = "core" }
-creek-decode-symphonia = { version = "0.2.0", path = "decode_symphonia", optional = true }
-creek-encode-wav = { version = "0.1.0", path = "encode_wav", optional = true }
+creek-core = { version = "0.1.1", path = "core" }
+creek-decode-symphonia = { version = "0.2.1", path = "decode_symphonia", optional = true }
+creek-encode-wav = { version = "0.1.1", path = "encode_wav", optional = true }
 
 # Unoptimized builds result in prominent gaps of silence after cache misses in the demo player.
 [profile.dev]

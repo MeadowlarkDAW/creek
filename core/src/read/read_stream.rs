@@ -73,6 +73,7 @@ impl<D: Decoder> ReadDiskStream<D> {
         assert_ne!(stream_opts.block_size, 0);
         assert_ne!(stream_opts.num_look_ahead_blocks, 0);
         assert_ne!(stream_opts.server_msg_channel_size, Some(0));
+        assert!(stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks > 2);
 
         // Reserve ample space for the message channels.
         let msg_channel_size = stream_opts.server_msg_channel_size.unwrap_or(

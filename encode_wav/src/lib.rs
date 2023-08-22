@@ -168,25 +168,28 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                     .write_to_disk(&write_block.block()[0][0..written_frames], &mut file)?;
             } else {
                 if self.num_channels == 2 {
-                    // Hint to compiler to optimize loop
-                    assert!(written_frames <= write_block.block()[0].len());
-                    assert!(written_frames <= write_block.block()[1].len());
-                    assert!(written_frames * 2 <= self.interleave_buf.len());
+                    // Provide efficient stereo interleaving.
+                    let ch1 = &write_block.block()[0][0..written_frames];
+                    let ch2 = &write_block.block()[1][0..written_frames];
+                    let interleave_buf_part = &mut self.interleave_buf[0..written_frames * 2];
 
-                    for frame in 0..written_frames {
-                        self.interleave_buf[frame * 2] = write_block.block()[0][frame];
-                        self.interleave_buf[frame * 2 + 1] = write_block.block()[1][frame];
+                    for (i, frame) in interleave_buf_part.chunks_exact_mut(2).enumerate() {
+                        frame[0] = ch1[i];
+                        frame[1] = ch2[i];
                     }
                 } else {
-                    // Hint to compiler to optimize loop
-                    assert!(written_frames * self.num_channels <= self.interleave_buf.len());
-                    for block in write_block.block() {
-                        assert!(written_frames <= block.len());
-                    }
+                    let interleave_buf_part =
+                        &mut self.interleave_buf[0..written_frames * self.num_channels];
 
-                    for frame in 0..written_frames {
-                        for (ch, block) in write_block.block().iter().enumerate() {
-                            self.interleave_buf[frame * self.num_channels + ch] = block[frame];
+                    for (ch_i, ch) in write_block.block().iter().enumerate() {
+                        let ch_slice = &ch[0..written_frames];
+
+                        for (dst, src) in interleave_buf_part[ch_i..]
+                            .iter_mut()
+                            .step_by(self.num_channels)
+                            .zip(ch_slice)
+                        {
+                            *dst = *src;
                         }
                     }
                 }

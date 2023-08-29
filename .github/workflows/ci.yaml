@@ -1,10 +1,14 @@
 name: Rust CI
 
+permissions:
+  contents: read
+
 on:
   pull_request:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build_and_test:

@@ -14,10 +14,12 @@ jobs:
         include:
           - os: ubuntu-latest
             rust: stable
+            check-workspace-extra-args: ""
 
           # Minimum Supported Rust Version (MSRV)
           - os: ubuntu-latest
             rust: 1.62.0
+            check-workspace-extra-args: "--exclude player --exclude writer"
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -43,10 +45,7 @@ jobs:
           shared-key: ${{ github.workflow }}-${{ github.job }}
 
       - name: Check workspace build
-        run: cargo check --locked --workspace --tests --features decode-all
+        run: cargo check --locked --workspace --features decode-all ${{ matrix.check-workspace-extra-args }}
 
-      - name: Build tests
-        run: cargo test --locked --all-targets --no-run
-
-      - name: Run tests
-        run: cargo test --locked --all-targets -- --nocapture --quiet
+      - name: Run workspace tests
+        run: cargo test --locked --workspace --features decode-all -- --nocapture --quiet

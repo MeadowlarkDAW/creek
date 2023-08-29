@@ -1,5 +1,6 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow
 
+# Same as file name
 name: pre-commit
 
 permissions:
@@ -16,9 +17,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  pre-commit:
-    name: Detecting code style issues
+  run:
     runs-on: ubuntu-latest
+
     steps:
       - name: Install ALSA and Jack dependencies
         run: sudo apt install alsa libasound2-dev libxcb-shape0-dev libxcb-xfixes0-dev

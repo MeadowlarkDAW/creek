@@ -39,9 +39,8 @@ jobs:
       - name: Cache Rust toolchain and build artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          # Distinguished by the action name to avoid sharing!
-          # The cache is automatically keyed by the relevant matrix properties.
-          shared-key: "ci"
+          # The cache should not be shared between different workflows and jobs.
+          shared-key: ${{ github.workflow }}-${{ github.job }}
 
       - name: Check workspace build
         run: cargo check --locked --workspace --tests --features decode-all

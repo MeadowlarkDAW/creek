@@ -133,8 +133,12 @@ impl Decoder for SymphoniaDecoder {
                     }
 
                     let len = decoded.frames();
+                    let capacity = decoded.capacity();
 
-                    let decode_buffer: AudioBuffer<f32> = decoded.make_equivalent();
+                    let mut decode_buffer: AudioBuffer<f32> =
+                        AudioBuffer::new(capacity as u64, spec);
+
+                    decoded.convert(&mut decode_buffer);
 
                     break (decode_buffer, len);
                 }
@@ -275,6 +279,13 @@ impl Decoder for SymphoniaDecoder {
                             match self.decoder.decode(&packet) {
                                 Ok(decoded) => {
                                     self.decode_buffer_len = decoded.frames();
+
+                                    let capacity = decoded.capacity();
+                                    if self.decode_buffer.capacity() < capacity {
+                                        self.decode_buffer =
+                                            AudioBuffer::new(capacity as u64, *decoded.spec());
+                                    }
+
                                     decoded.convert(&mut self.decode_buffer);
 
                                     self.curr_decode_buffer_frame = 0;

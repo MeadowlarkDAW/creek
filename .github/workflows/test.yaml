@@ -1,25 +1,34 @@
-name: Rust CI
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow
+
+# Same as file name
+name: test
+
+permissions:
+  contents: read
 
 on:
   pull_request:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
-  build_and_test:
-    name: Build and test
+  run:
+    runs-on: ${{ matrix.os }}
+
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
             rust: stable
+            workspace-extra-args: ""
 
           # Minimum Supported Rust Version (MSRV)
           - os: ubuntu-latest
             rust: 1.62.0
+            workspace-extra-args: "--exclude player --exclude writer"
 
-    runs-on: ${{ matrix.os }}
     steps:
       - name: Install dependencies
         run: sudo apt install alsa libasound2-dev libxcb-shape0-dev libxcb-xfixes0-dev
@@ -39,15 +48,8 @@ jobs:
       - name: Cache Rust toolchain and build artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          # Distinguished by the action name to avoid sharing!
-          # The cache is automatically keyed by the relevant matrix properties.
-          shared-key: "ci"
+          # The cache should not be shared between different workflows and jobs.
+          shared-key: ${{ github.workflow }}-${{ github.job }}
 
-      - name: Check workspace build
-        run: cargo check --locked --workspace --tests --features decode-all
-
-      - name: Build tests
-        run: cargo test --locked --all-targets --no-run
-
-      - name: Run tests
-        run: cargo test --locked --all-targets -- --nocapture --quiet
+      - name: Run workspace tests
+        run: cargo test --locked --workspace --features decode-all ${{ matrix.workspace-extra-args }} -- --nocapture --quiet

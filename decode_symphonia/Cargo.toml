@@ -16,7 +16,7 @@ repository = "https://github.com/RustyDAW/creek"
 [dependencies]
 creek-core = { version = "0.2.0", path = "../core" }
 log = "0.4"
-symphonia = "0.5.3"
+symphonia = "0.5"
 
 [dev-dependencies]
 float-cmp = "0.9"

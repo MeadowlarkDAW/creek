@@ -767,6 +767,8 @@ impl<D: Decoder> ReadDiskStream<D> {
                 // This check should never fail because it can only be `None` in the destructor.
                 let heap = self.heap_data.as_mut().unwrap();
 
+                heap.read_buffer.clear();
+
                 // Get the first block of data.
                 let current_block_data = {
                     let current_block = &heap.prefetch_buffer[self.current_block_index];
@@ -791,22 +793,21 @@ impl<D: Decoder> ReadDiskStream<D> {
                     }
                 };
 
-                for i in 0..heap.read_buffer.block.len() {
-                    let read_buffer_part = &mut heap.read_buffer.block[i][0..first_len];
-
-                    if let Some(block) = current_block_data {
-                        let from_buffer_part = &block.block[i]
-                            [self.current_frame_in_block..self.current_frame_in_block + first_len];
-
-                        read_buffer_part.copy_from_slice(from_buffer_part);
-                    } else {
-                        // Output silence.
-                        read_buffer_part[..first_len].fill_with(Default::default);
-                    };
+                if let Some(block) = current_block_data {
+                    for (read_buffer_ch, block_ch) in
+                        heap.read_buffer.block.iter_mut().zip(block.block.iter())
+                    {
+                        read_buffer_ch.extend_from_slice(
+                            &block_ch[self.current_frame_in_block
+                                ..self.current_frame_in_block + first_len],
+                        );
+                    }
+                } else {
+                    // Output silence.
+                    for ch in heap.read_buffer.block.iter_mut() {
+                        ch.resize(ch.len() + first_len, Default::default());
+                    }
                 }
-
-                // Keep this from growing indefinitely.
-                //self.current_block_start_frame = current_block_start_frame;
             }
 
             self.advance_to_next_block()?;
@@ -840,18 +841,17 @@ impl<D: Decoder> ReadDiskStream<D> {
                     }
                 };
 
-                for i in 0..heap.read_buffer.block.len() {
-                    let read_buffer_part =
-                        &mut heap.read_buffer.block[i][first_len..first_len + second_len];
-
-                    if let Some(block) = next_block_data {
-                        let from_buffer_part = &block.block[i][0..second_len];
-
-                        read_buffer_part.copy_from_slice(from_buffer_part);
-                    } else {
-                        // Output silence.
-                        read_buffer_part[..second_len].fill_with(Default::default);
-                    };
+                if let Some(block) = next_block_data {
+                    for (read_buffer_ch, block_ch) in
+                        heap.read_buffer.block.iter_mut().zip(block.block.iter())
+                    {
+                        read_buffer_ch.extend_from_slice(&block_ch[0..second_len]);
+                    }
+                } else {
+                    // Output silence.
+                    for ch in heap.read_buffer.block.iter_mut() {
+                        ch.resize(ch.len() + second_len, Default::default());
+                    }
                 }
 
                 self.current_frame_in_block = second_len;
@@ -861,6 +861,8 @@ impl<D: Decoder> ReadDiskStream<D> {
             {
                 // This check should never fail because it can only be `None` in the destructor.
                 let heap = self.heap_data.as_mut().unwrap();
+
+                heap.read_buffer.clear();
 
                 // Get the first block of data.
                 let current_block_data = {
@@ -886,18 +888,20 @@ impl<D: Decoder> ReadDiskStream<D> {
                     }
                 };
 
-                for i in 0..heap.read_buffer.block.len() {
-                    let read_buffer_part = &mut heap.read_buffer.block[i][0..frames];
-
-                    if let Some(block) = current_block_data {
-                        let from_buffer_part = &block.block[i]
-                            [self.current_frame_in_block..self.current_frame_in_block + frames];
-
-                        read_buffer_part.copy_from_slice(from_buffer_part);
-                    } else {
-                        // Output silence.
-                        read_buffer_part[..frames].fill_with(Default::default);
-                    };
+                if let Some(block) = current_block_data {
+                    for (read_buffer_ch, block_ch) in
+                        heap.read_buffer.block.iter_mut().zip(block.block.iter())
+                    {
+                        read_buffer_ch.extend_from_slice(
+                            &block_ch
+                                [self.current_frame_in_block..self.current_frame_in_block + frames],
+                        );
+                    }
+                } else {
+                    // Output silence.
+                    for ch in heap.read_buffer.block.iter_mut() {
+                        ch.resize(ch.len() + frames, Default::default());
+                    }
                 }
             }
 

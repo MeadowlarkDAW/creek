@@ -1,6 +1,6 @@
 use creek::{Decoder, ReadDiskStream, ReadStreamOptions, SymphoniaDecoder};
-use eframe::{egui, epi};
-use rtrb::{Consumer, Producer, RingBuffer};
+use eframe::egui;
+use rtrb::{Consumer, Producer};
 
 use crate::{GuiToProcessMsg, ProcessToGuiMsg};
 
@@ -17,9 +17,6 @@ pub struct DemoPlayerApp {
     to_player_tx: Producer<GuiToProcessMsg>,
     from_player_rx: Consumer<ProcessToGuiMsg>,
 
-    frame_close_tx: Producer<()>,
-    frame_close_rx: Option<Consumer<()>>,
-
     loop_start: usize,
     loop_end: usize,
 
@@ -33,6 +30,7 @@ impl DemoPlayerApp {
         mut to_player_tx: Producer<GuiToProcessMsg>,
         from_player_rx: Consumer<ProcessToGuiMsg>,
         file_path: std::path::PathBuf,
+        _cc: &eframe::CreationContext<'_>,
     ) -> Self {
         // Setup read stream -------------------------------------------------------------
 
@@ -87,16 +85,11 @@ impl DemoPlayerApp {
             })
             .unwrap();
 
-        let (frame_close_tx, frame_close_rx) = RingBuffer::new(1);
-
         Self {
             playing: false,
             current_frame: 0,
             num_frames,
             transport_control: Default::default(),
-
-            frame_close_tx,
-            frame_close_rx: Some(frame_close_rx),
 
             to_player_tx,
             from_player_rx,
@@ -111,31 +104,8 @@ impl DemoPlayerApp {
     }
 }
 
-impl epi::App for DemoPlayerApp {
-    fn name(&self) -> &str {
-        "rt-audio-disk-stream demo player"
-    }
-
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
-        if let Some(mut frame_close_rx) = self.frame_close_rx.take() {
-            // Spawn thread that calls a repaint 60 times a second.
-
-            let repaint_signal = frame.repaint_signal().clone();
-
-            std::thread::spawn(move || {
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs_f64(1.0 / 60.0));
-
-                    // Check if app has closed.
-                    if frame_close_rx.pop().is_ok() {
-                        break;
-                    }
-
-                    repaint_signal.request_repaint();
-                }
-            });
-        }
-
+impl eframe::App for DemoPlayerApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         while let Ok(msg) = self.from_player_rx.pop() {
             match msg {
                 ProcessToGuiMsg::PlaybackPos(pos) => {
@@ -146,6 +116,10 @@ impl epi::App for DemoPlayerApp {
                 }
             }
         }
+
+        // In a real app we should only repaint if something has changed, but since this is
+        // just a demo this is fine.
+        ctx.request_repaint();
 
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::warn_if_debug_build(ui);
@@ -177,10 +151,10 @@ impl epi::App for DemoPlayerApp {
 
             let mut loop_start = self.loop_start;
             let mut loop_end = self.loop_end;
-            ui.add(egui::Slider::usize(&mut loop_start, 0..=self.num_frames).text("loop start"));
-            ui.add(egui::Slider::usize(&mut loop_end, 0..=self.num_frames).text("loop end"));
+            ui.add(egui::Slider::new(&mut loop_start, 0..=self.num_frames).text("loop start"));
+            ui.add(egui::Slider::new(&mut loop_end, 0..=self.num_frames).text("loop end"));
             if (loop_start != self.loop_start || loop_end != self.loop_end)
-                && (ui.input().pointer.any_released() || ui.input().key_pressed(egui::Key::Enter))
+                && ui.input(|i| i.pointer.any_released() || i.key_pressed(egui::Key::Enter))
             {
                 if loop_end <= loop_start {
                     if loop_start == self.num_frames {
@@ -203,16 +177,10 @@ impl epi::App for DemoPlayerApp {
             }
 
             if self.buffering_anim > 0 {
-                ui.label(
-                    egui::Label::new("Status: Buffered")
-                        .text_color(egui::Color32::from_rgb(255, 0, 0)),
-                );
+                ui.colored_label(egui::Color32::from_rgb(255, 0, 0), "Status: Buffered");
                 self.buffering_anim -= 1;
             } else {
-                ui.label(
-                    egui::Label::new("Status: Ready")
-                        .text_color(egui::Color32::from_rgb(0, 255, 0)),
-                );
+                ui.colored_label(egui::Color32::from_rgb(0, 255, 0), "Status: Ready");
             }
 
             let (_, user_seeked) = self.transport_control.ui(
@@ -233,12 +201,6 @@ impl epi::App for DemoPlayerApp {
     }
 }
 
-impl Drop for DemoPlayerApp {
-    fn drop(&mut self) {
-        self.frame_close_tx.push(()).unwrap();
-    }
-}
-
 struct TransportControl {
     rail_stroke: egui::Stroke,
     handle_stroke: egui::Stroke,
@@ -254,7 +216,7 @@ impl Default for TransportControl {
             rail_stroke: egui::Stroke::new(1.0, egui::Color32::GRAY),
             handle_stroke: egui::Stroke::new(1.0, egui::Color32::WHITE),
             loop_stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 255, 0)),
-            cache_stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 0, 255)),
+            cache_stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 255, 255)),
             seeking: false,
         }
     }
@@ -273,7 +235,7 @@ impl TransportControl {
         cache_size: usize,
     ) -> (egui::Response, bool) {
         let (response, painter) =
-            ui.allocate_painter(ui.available_size_before_wrap_finite(), egui::Sense::drag());
+            ui.allocate_painter(ui.available_size_before_wrap(), egui::Sense::drag());
         let rect = response.rect;
 
         let mut shapes = vec![];
@@ -304,13 +266,13 @@ impl TransportControl {
             self.loop_stroke,
         ));
 
-        if let Some(press_origin) = ui.input().pointer.press_origin() {
+        if let Some(press_origin) = ui.input(|i| i.pointer.press_origin()) {
             if press_origin.x >= start_x
                 && press_origin.x <= end_x
                 && press_origin.y >= rail_y - 10.0
                 && press_origin.y <= rail_y + 10.0
             {
-                if let Some(mouse_pos) = ui.input().pointer.interact_pos() {
+                if let Some(mouse_pos) = ui.input(|i| i.pointer.interact_pos()) {
                     let handle_x = mouse_pos.x - start_x;
                     *value = (((handle_x / rail_width) * max_value as f32).round() as isize)
                         .max(0)
@@ -322,8 +284,8 @@ impl TransportControl {
         }
 
         let mut changed: bool = false;
-        if ui.input().pointer.any_released() && self.seeking {
-            if let Some(mouse_pos) = ui.input().pointer.interact_pos() {
+        if ui.input(|i| i.pointer.any_released()) && self.seeking {
+            if let Some(mouse_pos) = ui.input(|i| i.pointer.interact_pos()) {
                 let handle_x = mouse_pos.x - start_x;
                 *value = (((handle_x / rail_width) * max_value as f32).round() as isize)
                     .max(0)

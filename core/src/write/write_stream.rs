@@ -218,18 +218,17 @@ impl<E: Encoder> WriteDiskStream<E> {
         // Check that there are available blocks to write to.
         if let Some(mut current_block) = heap.current_block.take() {
             if let Some(mut next_block) = heap.next_block.take() {
-                if current_block.written_frames + buffer_len > self.block_size {
+                let current_block_written_frames = current_block.block[0].len();
+
+                if current_block_written_frames + buffer_len > self.block_size {
                     // Need to copy to two blocks.
 
-                    let first_len = self.block_size - current_block.written_frames;
-                    let second_len = buffer_len - first_len;
+                    let first_len = self.block_size - current_block_written_frames;
 
                     // Copy into first block.
                     for (buffer_ch, write_ch) in buffer.iter().zip(current_block.block.iter_mut()) {
-                        write_ch[current_block.written_frames..]
-                            .copy_from_slice(&buffer_ch[0..first_len]);
+                        write_ch.extend_from_slice(&buffer_ch[0..first_len]);
                     }
-                    current_block.written_frames = self.block_size;
 
                     // Send the now filled block to the IO server for writing.
                     // This cannot fail because we made sure there was a slot open in
@@ -241,9 +240,8 @@ impl<E: Encoder> WriteDiskStream<E> {
 
                     // Copy the remaining data into the second block.
                     for (buffer_ch, write_ch) in buffer.iter().zip(next_block.block.iter_mut()) {
-                        write_ch[0..second_len].copy_from_slice(&buffer_ch[first_len..]);
+                        write_ch.extend_from_slice(&buffer_ch[first_len..]);
                     }
-                    next_block.written_frames = second_len;
 
                     // Move the next-up block into the current block.
                     heap.current_block = Some(next_block);
@@ -253,14 +251,13 @@ impl<E: Encoder> WriteDiskStream<E> {
                 } else {
                     // Only need to copy to first block.
 
-                    let end = current_block.written_frames + buffer_len;
-
                     for (buffer_ch, write_ch) in buffer.iter().zip(current_block.block.iter_mut()) {
-                        write_ch[current_block.written_frames..end].copy_from_slice(buffer_ch);
+                        write_ch.extend_from_slice(buffer_ch);
                     }
-                    current_block.written_frames = end;
 
-                    if current_block.written_frames == self.block_size {
+                    let current_block_written_frames = current_block.block[0].len();
+
+                    if current_block_written_frames == self.block_size {
                         // Block is filled. Sent it to the IO server for writing.
                         // This cannot fail because we made sure there was a slot open in
                         // a previous step.
@@ -315,7 +312,7 @@ impl<E: Encoder> WriteDiskStream<E> {
             let heap = self.heap_data.as_mut().unwrap();
 
             if let Some(mut current_block) = heap.current_block.take() {
-                if current_block.written_frames > 0 {
+                if !current_block.block[0].is_empty() {
                     // Send the last bit of remaining samples to be encoded.
 
                     // Check that there is at-least one slot open.
@@ -400,7 +397,7 @@ impl<E: Encoder> WriteDiskStream<E> {
         let heap = self.heap_data.as_mut().unwrap();
 
         if let Some(block) = &mut heap.current_block {
-            block.written_frames = 0;
+            block.clear();
         }
 
         self.restart_count += 1;

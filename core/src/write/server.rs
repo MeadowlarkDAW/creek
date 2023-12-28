@@ -89,12 +89,10 @@ impl<E: Encoder> WriteServer<E> {
                         // Don't use this block if it is from a previous discarded stream.
                         if block.restart_count != self.restart_count {
                             // Clear and send block to be re-used by client.
-                            block.written_frames = 0;
+                            block.clear();
                             self.send_msg(ServerToClientMsg::NewWriteBlock { block });
                         } else {
-                            // Safe because we assume that the encoder will not try to use any
-                            // unwritten data.
-                            let write_res = unsafe { self.encoder.encode(&block) };
+                            let write_res = self.encoder.encode(&block);
 
                             match write_res {
                                 Ok(status) => {
@@ -105,7 +103,7 @@ impl<E: Encoder> WriteServer<E> {
                                     }
 
                                     // Clear and send block to be re-used by client.
-                                    block.written_frames = 0;
+                                    block.clear();
                                     self.send_msg(ServerToClientMsg::NewWriteBlock { block });
                                 }
                                 Err(e) => {

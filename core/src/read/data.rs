@@ -4,22 +4,27 @@ pub struct DataBlock<T: Copy + Clone + Default + Send> {
 }
 
 impl<T: Copy + Clone + Default + Send> DataBlock<T> {
-    /// # Safety
-    ///
-    /// Using an allocated but uninitialized [`Vec`] is safe because the block data
-    /// will be always filled before it is sent to be read by the client.
     pub fn new(num_channels: usize, block_size: usize) -> Self {
-        let mut block: Vec<Vec<T>> = Vec::with_capacity(num_channels);
-        for _ in 0..num_channels {
-            let mut data: Vec<T> = Vec::with_capacity(block_size);
-            #[allow(clippy::uninit_vec)] // TODO
-            unsafe {
-                data.set_len(block_size)
-            };
-            block.push(data);
+        DataBlock {
+            block: (0..num_channels)
+                .map(|_| Vec::with_capacity(block_size))
+                .collect(),
         }
+    }
 
-        DataBlock { block }
+    pub fn clear(&mut self) {
+        for ch in self.block.iter_mut() {
+            ch.clear();
+        }
+    }
+
+    pub(crate) fn ensure_correct_size(&mut self, block_size: usize) {
+        // If the decoder didn't fill enough frames, then fill the rest with zeros.
+        for ch in self.block.iter_mut() {
+            if ch.len() < block_size {
+                ch.resize(block_size, Default::default());
+            }
+        }
     }
 }
 
@@ -29,12 +34,11 @@ pub(crate) struct DataBlockCache<T: Copy + Clone + Default + Send> {
 
 impl<T: Copy + Clone + Default + Send> DataBlockCache<T> {
     pub(crate) fn new(num_channels: usize, num_prefetch_blocks: usize, block_size: usize) -> Self {
-        let mut blocks: Vec<DataBlock<T>> = Vec::with_capacity(num_prefetch_blocks);
-        for _ in 0..num_prefetch_blocks {
-            blocks.push(DataBlock::new(num_channels, block_size));
+        Self {
+            blocks: (0..num_prefetch_blocks)
+                .map(|_| DataBlock::new(num_channels, block_size))
+                .collect(),
         }
-
-        Self { blocks }
     }
 }
 

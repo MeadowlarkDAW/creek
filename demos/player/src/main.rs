@@ -30,8 +30,19 @@ fn main() {
     let (to_gui_tx, from_process_rx) = RingBuffer::<ProcessToGuiMsg>::new(256);
     let (to_process_tx, from_gui_rx) = RingBuffer::<GuiToProcessMsg>::new(64);
 
-    let app = ui::DemoPlayerApp::new(to_process_tx, from_process_rx, file_path);
     let _cpal_stream = output::Output::new(to_gui_tx, from_gui_rx);
 
-    eframe::run_native(Box::new(app));
+    eframe::run_native(
+        "creek demo player",
+        eframe::NativeOptions::default(),
+        Box::new(|cc| {
+            Box::new(ui::DemoPlayerApp::new(
+                to_process_tx,
+                from_process_rx,
+                file_path,
+                cc,
+            ))
+        }),
+    )
+    .unwrap();
 }

@@ -3,6 +3,7 @@
 #![warn(clippy::missing_panics_doc)]
 #![warn(clippy::clone_on_ref_ptr)]
 #![deny(trivial_numeric_casts)]
+#![forbid(unsafe_code)]
 
 use std::fs::File;
 use std::path::PathBuf;
@@ -230,10 +231,7 @@ impl Decoder for SymphoniaDecoder {
         Ok(())
     }
 
-    unsafe fn decode(
-        &mut self,
-        data_block: &mut DataBlock<Self::T>,
-    ) -> Result<(), Self::FatalError> {
+    fn decode(&mut self, data_block: &mut DataBlock<Self::T>) -> Result<(), Self::FatalError> {
         if self.playhead_frame >= self.num_frames {
             // Do nothing if reached the end of the file.
             return Ok(());
@@ -260,8 +258,7 @@ impl Decoder for SymphoniaDecoder {
                 for (dst_ch, src_ch) in data_block.block.iter_mut().zip(src_channels) {
                     let src_ch_part = &src_ch[self.curr_decode_buffer_frame
                         ..self.curr_decode_buffer_frame + num_frames_to_cpy];
-                    dst_ch[block_start_frame..block_start_frame + num_frames_to_cpy]
-                        .copy_from_slice(src_ch_part);
+                    dst_ch.extend_from_slice(src_ch_part);
                 }
 
                 block_start_frame += num_frames_to_cpy;
@@ -413,9 +410,8 @@ mod tests {
         let (mut decoder, file_info) = decoder.unwrap();
 
         let mut data_block = DataBlock::new(1, block_size);
-        unsafe {
-            decoder.decode(&mut data_block).unwrap();
-        }
+        data_block.clear();
+        decoder.decode(&mut data_block).unwrap();
 
         let samples = &mut data_block.block[0];
         assert_eq!(samples.len(), block_size);
@@ -434,9 +430,8 @@ mod tests {
             0.71875, 0.7421875,
         ];
 
-        unsafe {
-            decoder.decode(&mut data_block).unwrap();
-        }
+        data_block.clear();
+        decoder.decode(&mut data_block).unwrap();
 
         let samples = &mut data_block.block[0];
         for i in 0..samples.len() {
@@ -451,9 +446,9 @@ mod tests {
         // Seek to last frame
         decoder.seek(file_info.num_frames - 1 - block_size).unwrap();
 
-        unsafe {
-            decoder.decode(&mut data_block).unwrap();
-        }
+        data_block.clear();
+        decoder.decode(&mut data_block).unwrap();
+
         let samples = &mut data_block.block[0];
         for i in 0..samples.len() {
             assert_approx_eq!(f32, last_frame[i], samples[i], ulps = 2);

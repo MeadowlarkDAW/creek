@@ -64,9 +64,6 @@ pub trait Encoder: Sized + 'static {
 
     /// Write a block of data to the file.
     ///
-    /// The block may contain less written frames than the length of the channel
-    /// `Vec`s, so be sure to only read up to `block.written_frames()`.
-    ///
     /// If the write was successful, return `WriteStatus::Ok`.
     ///
     /// If the codec has a maximum file size (i.e. 4GB for WAV), then keep track of
@@ -75,14 +72,7 @@ pub trait Encoder: Sized + 'static {
     /// the file name (i.e. "_001" for the first file, "_002" for the second, etc.)
     /// This helper function `num_files_to_file_name_extension()` can be used to find
     /// this extension.
-    ///
-    /// # Safety
-    ///
-    /// This is marked as `unsafe` because a `data_block` may be uninitialized, causing
-    /// undefined behavior if unwritten data from the block is read. Please use the value
-    /// from `write_block.num_frames()` to know how many frames in the block are valid.
-    /// (valid frames are from `[0..num_frames]`)
-    unsafe fn encode(
+    fn encode(
         &mut self,
         write_block: &WriteBlock<Self::T>,
     ) -> Result<WriteStatus, Self::FatalError>;

@@ -2,29 +2,15 @@
 pub struct WriteBlock<T: Copy + Clone + Default + Send> {
     pub(crate) block: Vec<Vec<T>>,
 
-    pub(crate) written_frames: usize,
     pub(crate) restart_count: usize,
 }
 
 impl<T: Copy + Clone + Default + Send> WriteBlock<T> {
-    /// # Safety
-    ///
-    /// Using an allocated but uninitialized [`Vec`] is safe because the block data
-    /// will be always filled before it is sent to be written by the IO server.
     pub fn new(num_channels: usize, block_size: usize) -> Self {
-        let mut block: Vec<Vec<T>> = Vec::with_capacity(num_channels);
-        for _ in 0..num_channels {
-            let mut data: Vec<T> = Vec::with_capacity(block_size);
-            #[allow(clippy::uninit_vec)] // TODO
-            unsafe {
-                data.set_len(block_size)
-            };
-            block.push(data);
-        }
-
         WriteBlock {
-            block,
-            written_frames: 0,
+            block: (0..num_channels)
+                .map(|_| Vec::with_capacity(block_size))
+                .collect(),
             restart_count: 0,
         }
     }
@@ -34,7 +20,13 @@ impl<T: Copy + Clone + Default + Send> WriteBlock<T> {
     }
 
     pub fn written_frames(&self) -> usize {
-        self.written_frames
+        self.block[0].len()
+    }
+
+    pub fn clear(&mut self) {
+        for ch in self.block.iter_mut() {
+            ch.clear();
+        }
     }
 }
 

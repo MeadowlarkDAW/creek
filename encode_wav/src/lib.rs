@@ -3,6 +3,7 @@
 #![warn(clippy::missing_panics_doc)]
 #![warn(clippy::clone_on_ref_ptr)]
 #![deny(trivial_numeric_casts)]
+#![forbid(unsafe_code)]
 
 use std::path::PathBuf;
 use std::{
@@ -120,13 +121,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
         file.write_all(header.buffer())?;
         file.flush()?;
 
-        let buf_len = usize::from(num_channels) * block_size;
-        let mut interleave_buf: Vec<B::T> = Vec::with_capacity(buf_len);
-        // Safe because data will always be written to before it is read.
-        #[allow(clippy::uninit_vec)] // TODO
-        unsafe {
-            interleave_buf.set_len(buf_len);
-        }
+        let interleave_buf: Vec<B::T> = Vec::with_capacity(block_size * usize::from(num_channels));
 
         let max_file_bytes = u64::from(header.max_data_bytes());
         let bytes_per_frame = u64::from(num_channels) * u64::from(format.bytes_per_sample());
@@ -154,15 +149,18 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
         ))
     }
 
-    unsafe fn encode(
+    fn encode(
         &mut self,
         write_block: &WriteBlock<Self::T>,
     ) -> Result<WriteStatus, Self::FatalError> {
         let mut status = WriteStatus::Ok;
 
-        if let Some(mut file) = self.file.take() {
-            let written_frames = write_block.written_frames();
+        let written_frames = write_block.written_frames();
+        if written_frames == 0 {
+            return Ok(status);
+        }
 
+        if let Some(mut file) = self.file.take() {
             if self.num_channels == 1 {
                 self.bit_depth
                     .write_to_disk(&write_block.block()[0][0..written_frames], &mut file)?;
@@ -171,6 +169,12 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                     // Provide efficient stereo interleaving.
                     let ch1 = &write_block.block()[0][0..written_frames];
                     let ch2 = &write_block.block()[1][0..written_frames];
+
+                    if self.interleave_buf.len() < written_frames * 2 {
+                        self.interleave_buf
+                            .resize(written_frames * 2, Default::default());
+                    }
+
                     let interleave_buf_part = &mut self.interleave_buf[0..written_frames * 2];
 
                     for (i, frame) in interleave_buf_part.chunks_exact_mut(2).enumerate() {
@@ -178,6 +182,11 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                         frame[1] = ch2[i];
                     }
                 } else {
+                    if self.interleave_buf.len() < written_frames * self.num_channels {
+                        self.interleave_buf
+                            .resize(written_frames * self.num_channels, Default::default());
+                    }
+
                     let interleave_buf_part =
                         &mut self.interleave_buf[0..written_frames * self.num_channels];
 
@@ -246,11 +255,9 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                 status = WriteStatus::ReachedMaxSize {
                     num_files: self.num_files,
                 };
-
-                self.file = Some(file);
-            } else {
-                self.file = Some(file);
             }
+
+            self.file = Some(file);
         }
 
         Ok(status)

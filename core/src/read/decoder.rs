@@ -52,22 +52,18 @@ pub trait Decoder: Sized + 'static {
     /// set the read position the end of the file instead of returning an error.
     fn seek(&mut self, frame: usize) -> Result<(), Self::FatalError>;
 
-    /// Decode data into the `data_block` starting from the read position. This is streaming,
-    /// meaning the next call to `decode()` should pick up where the previous left off.
+    /// Decode data into the `data_block` starting from your current internal read position.
+    /// This is streaming, meaning the next call to `decode()` should pick up where the
+    /// previous left off.
     ///
-    /// If the end of the file is reached, fill data up to the end of the file, then set the
-    /// read position to the last frame in the file and do nothing.
+    /// Fill each channel in the data block with `block_size` number of frames (you should
+    /// have gotten this value from `Decoder::new()`). If there isn't enough data left
+    /// because the end of the file has been reached, then only fill up how ever many frames
+    /// are left. If the end of the file has already been reached since the last call to
+    /// `decode()`, then do nothing.
     ///
-    /// # Safety
-    ///
-    /// This is marked as `unsafe` because a `data_block` may be uninitialized, causing
-    /// undefined behavior if data is not filled into the block. It is your responsibility to
-    /// always fill the block (unless the end of the file is reached, in which case the server
-    /// will tell the client to not read data past that frame).
-    unsafe fn decode(
-        &mut self,
-        data_block: &mut DataBlock<Self::T>,
-    ) -> Result<(), Self::FatalError>;
+    /// Each channel Vec in `data_block` will have a length of zero.
+    fn decode(&mut self, data_block: &mut DataBlock<Self::T>) -> Result<(), Self::FatalError>;
 
     /// Return the current read position.
     fn current_frame(&self) -> usize;

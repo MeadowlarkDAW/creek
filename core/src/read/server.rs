@@ -109,9 +109,11 @@ impl<D: Decoder> ReadServer<D> {
                             ),
                         );
 
-                        // Safe because we assume that the decoder will correctly fill the block
-                        // with data.
-                        let decode_res = unsafe { self.decoder.decode(&mut block) };
+                        block.clear();
+
+                        let decode_res = self.decoder.decode(&mut block);
+
+                        block.ensure_correct_size(self.block_size);
 
                         match decode_res {
                             Ok(()) => {
@@ -181,9 +183,11 @@ impl<D: Decoder> ReadServer<D> {
 
                 // Fill the cache
                 for block in cache.blocks.iter_mut() {
-                    // Safe because we assume that the decoder will correctly fill the block
-                    // with data.
-                    let decode_res = unsafe { self.decoder.decode(block) };
+                    block.clear();
+
+                    let decode_res = self.decoder.decode(block);
+
+                    block.ensure_correct_size(self.block_size);
 
                     if let Err(e) = decode_res {
                         self.send_msg(ServerToClientMsg::FatalError(e));

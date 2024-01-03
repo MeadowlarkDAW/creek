@@ -95,12 +95,10 @@ impl Decoder for SymphoniaDecoder {
 
         // Seek the reader to the requested position.
         if start_frame != 0 {
-            let seconds = start_frame as f64 / f64::from(sample_rate.unwrap_or(44100));
-
             reader.seek(
                 SeekMode::Accurate,
                 SeekTo::Time {
-                    time: seconds.into(),
+                    time: frame_to_symphonia_time(start_frame as u64, sample_rate.unwrap_or(44100)),
                     track_id: None,
                 },
             )?;
@@ -199,12 +197,13 @@ impl Decoder for SymphoniaDecoder {
 
         self.playhead_frame = frame;
 
-        let seconds = self.playhead_frame as f64 / f64::from(self.sample_rate.unwrap_or(44100));
-
         match self.reader.seek(
             SeekMode::Accurate,
             SeekTo::Time {
-                time: seconds.into(),
+                time: frame_to_symphonia_time(
+                    self.playhead_frame as u64,
+                    self.sample_rate.unwrap_or(44100),
+                ),
                 track_id: None,
             },
         ) {
@@ -358,6 +357,17 @@ impl SymphoniaDecoder {
 pub struct SymphoniaDecoderInfo {
     pub codec_params: CodecParameters,
     pub metadata: Option<MetadataRevision>,
+}
+
+fn frame_to_symphonia_time(frame: u64, sample_rate: u32) -> symphonia::core::units::Time {
+    // Doing it this way is more accurate for large inputs than just using f64s.
+    let seconds = frame / u64::from(sample_rate);
+    let fract_frames = frame % u64::from(sample_rate);
+    let frac = fract_frames as f64 / f64::from(sample_rate);
+
+    // TODO: Ask the maintainer of Symphonia to add an option to seek to an
+    // exact frame.
+    symphonia::core::units::Time { seconds, frac }
 }
 
 #[cfg(test)]

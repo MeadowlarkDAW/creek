@@ -756,58 +756,84 @@ impl<D: Decoder> ReadDiskStream<D> {
             reached_end_of_file = true;
         }
 
+        let copy_block_into_read_buffer =
+            |heap: &mut HeapData<<D as Decoder>::T>,
+             block_index: usize,
+             start_frame_in_block: usize,
+             frames: usize| {
+                let maybe_block = {
+                    let block = &heap.prefetch_buffer[block_index];
+
+                    match block.use_cache_index {
+                        Some(cache_index) => heap.caches[cache_index]
+                            .cache
+                            .as_ref()
+                            .map(|cache| &cache.blocks[block_index]),
+                        None => {
+                            block.block.as_ref()
+
+                            // TODO: warn of buffer underflow.
+                        }
+                    }
+                };
+
+                if let Some(block) = maybe_block {
+                    for (buffer_ch, block_ch) in
+                        heap.read_buffer.block.iter_mut().zip(block.block.iter())
+                    {
+                        // If for some reason the decoder did not fill this block fully,
+                        // fill the rest with zeros.
+                        if block_ch.len() < start_frame_in_block + frames {
+                            if block_ch.len() <= start_frame_in_block {
+                                // The block has no more data to copy, fill all frames with zeros.
+                                buffer_ch.resize(buffer_ch.len() + frames, Default::default());
+                            } else {
+                                let copy_frames = block_ch.len() - start_frame_in_block;
+
+                                buffer_ch.extend_from_slice(
+                                    &block_ch
+                                        [start_frame_in_block..start_frame_in_block + copy_frames],
+                                );
+
+                                buffer_ch.resize(
+                                    buffer_ch.len() + frames - copy_frames,
+                                    Default::default(),
+                                );
+                            }
+                        } else {
+                            buffer_ch.extend_from_slice(
+                                &block_ch[start_frame_in_block..start_frame_in_block + frames],
+                            );
+                        };
+                    }
+                } else {
+                    // If no block exists, output silence.
+                    for buffer_ch in heap.read_buffer.block.iter_mut() {
+                        buffer_ch.resize(buffer_ch.len() + frames, Default::default());
+                    }
+                }
+            };
+
         let end_frame_in_block = self.current_frame_in_block + frames;
         if end_frame_in_block > self.block_size {
             // Data spans between two blocks, so two copies need to be performed.
 
-            // Copy from first block.
             let first_len = self.block_size - self.current_frame_in_block;
             let second_len = frames - first_len;
+
+            // Copy from first block.
             {
                 // This check should never fail because it can only be `None` in the destructor.
                 let heap = self.heap_data.as_mut().unwrap();
 
                 heap.read_buffer.clear();
 
-                // Get the first block of data.
-                let current_block_data = {
-                    let current_block = &heap.prefetch_buffer[self.current_block_index];
-
-                    match current_block.use_cache_index {
-                        Some(cache_index) => {
-                            if let Some(cache) = &heap.caches[cache_index].cache {
-                                Some(&cache.blocks[self.current_block_index])
-                            } else {
-                                // If cache is empty, output silence instead.
-                                None
-                            }
-                        }
-                        None => {
-                            if let Some(block) = &current_block.block {
-                                Some(block)
-                            } else {
-                                // TODO: warn of buffer underflow.
-                                None
-                            }
-                        }
-                    }
-                };
-
-                if let Some(block) = current_block_data {
-                    for (read_buffer_ch, block_ch) in
-                        heap.read_buffer.block.iter_mut().zip(block.block.iter())
-                    {
-                        read_buffer_ch.extend_from_slice(
-                            &block_ch[self.current_frame_in_block
-                                ..self.current_frame_in_block + first_len],
-                        );
-                    }
-                } else {
-                    // Output silence.
-                    for ch in heap.read_buffer.block.iter_mut() {
-                        ch.resize(ch.len() + first_len, Default::default());
-                    }
-                }
+                copy_block_into_read_buffer(
+                    heap,
+                    self.current_block_index,
+                    self.current_frame_in_block,
+                    first_len,
+                );
             }
 
             self.advance_to_next_block()?;
@@ -817,45 +843,10 @@ impl<D: Decoder> ReadDiskStream<D> {
                 // This check should never fail because it can only be `None` in the destructor.
                 let heap = self.heap_data.as_mut().unwrap();
 
-                // Get the next block of data.
-                let next_block_data = {
-                    let next_block = &heap.prefetch_buffer[self.current_block_index];
-
-                    match next_block.use_cache_index {
-                        Some(cache_index) => {
-                            if let Some(cache) = &heap.caches[cache_index].cache {
-                                Some(&cache.blocks[self.current_block_index])
-                            } else {
-                                // If cache is empty, output silence instead.
-                                None
-                            }
-                        }
-                        None => {
-                            if let Some(block) = &next_block.block {
-                                Some(block)
-                            } else {
-                                // TODO: warn of buffer underflow.
-                                None
-                            }
-                        }
-                    }
-                };
-
-                if let Some(block) = next_block_data {
-                    for (read_buffer_ch, block_ch) in
-                        heap.read_buffer.block.iter_mut().zip(block.block.iter())
-                    {
-                        read_buffer_ch.extend_from_slice(&block_ch[0..second_len]);
-                    }
-                } else {
-                    // Output silence.
-                    for ch in heap.read_buffer.block.iter_mut() {
-                        ch.resize(ch.len() + second_len, Default::default());
-                    }
-                }
-
-                self.current_frame_in_block = second_len;
+                copy_block_into_read_buffer(heap, self.current_block_index, 0, second_len);
             }
+
+            self.current_frame_in_block = second_len;
         } else {
             // Only need to copy from current block.
             {
@@ -864,45 +855,12 @@ impl<D: Decoder> ReadDiskStream<D> {
 
                 heap.read_buffer.clear();
 
-                // Get the first block of data.
-                let current_block_data = {
-                    let current_block = &heap.prefetch_buffer[self.current_block_index];
-
-                    match current_block.use_cache_index {
-                        Some(cache_index) => {
-                            if let Some(cache) = &heap.caches[cache_index].cache {
-                                Some(&cache.blocks[self.current_block_index])
-                            } else {
-                                // If cache is empty, output silence instead.
-                                None
-                            }
-                        }
-                        None => {
-                            if let Some(block) = &current_block.block {
-                                Some(block)
-                            } else {
-                                // TODO: warn of buffer underflow.
-                                None
-                            }
-                        }
-                    }
-                };
-
-                if let Some(block) = current_block_data {
-                    for (read_buffer_ch, block_ch) in
-                        heap.read_buffer.block.iter_mut().zip(block.block.iter())
-                    {
-                        read_buffer_ch.extend_from_slice(
-                            &block_ch
-                                [self.current_frame_in_block..self.current_frame_in_block + frames],
-                        );
-                    }
-                } else {
-                    // Output silence.
-                    for ch in heap.read_buffer.block.iter_mut() {
-                        ch.resize(ch.len() + frames, Default::default());
-                    }
-                }
+                copy_block_into_read_buffer(
+                    heap,
+                    self.current_block_index,
+                    self.current_frame_in_block,
+                    frames,
+                );
             }
 
             self.current_frame_in_block = end_frame_in_block;

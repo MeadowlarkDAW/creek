@@ -17,15 +17,6 @@ impl<T: Copy + Clone + Default + Send> DataBlock<T> {
             ch.clear();
         }
     }
-
-    pub(crate) fn ensure_correct_size(&mut self, block_size: usize) {
-        // If the decoder didn't fill enough frames, then fill the rest with zeros.
-        for ch in self.block.iter_mut() {
-            if ch.len() < block_size {
-                ch.resize(block_size, Default::default());
-            }
-        }
-    }
 }
 
 pub(crate) struct DataBlockCache<T: Copy + Clone + Default + Send> {

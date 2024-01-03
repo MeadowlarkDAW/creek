@@ -756,64 +756,6 @@ impl<D: Decoder> ReadDiskStream<D> {
             reached_end_of_file = true;
         }
 
-        let copy_block_into_read_buffer =
-            |heap: &mut HeapData<<D as Decoder>::T>,
-             block_index: usize,
-             start_frame_in_block: usize,
-             frames: usize| {
-                let maybe_block = {
-                    let block = &heap.prefetch_buffer[block_index];
-
-                    match block.use_cache_index {
-                        Some(cache_index) => heap.caches[cache_index]
-                            .cache
-                            .as_ref()
-                            .map(|cache| &cache.blocks[block_index]),
-                        None => {
-                            block.block.as_ref()
-
-                            // TODO: warn of buffer underflow.
-                        }
-                    }
-                };
-
-                if let Some(block) = maybe_block {
-                    for (buffer_ch, block_ch) in
-                        heap.read_buffer.block.iter_mut().zip(block.block.iter())
-                    {
-                        // If for some reason the decoder did not fill this block fully,
-                        // fill the rest with zeros.
-                        if block_ch.len() < start_frame_in_block + frames {
-                            if block_ch.len() <= start_frame_in_block {
-                                // The block has no more data to copy, fill all frames with zeros.
-                                buffer_ch.resize(buffer_ch.len() + frames, Default::default());
-                            } else {
-                                let copy_frames = block_ch.len() - start_frame_in_block;
-
-                                buffer_ch.extend_from_slice(
-                                    &block_ch
-                                        [start_frame_in_block..start_frame_in_block + copy_frames],
-                                );
-
-                                buffer_ch.resize(
-                                    buffer_ch.len() + frames - copy_frames,
-                                    Default::default(),
-                                );
-                            }
-                        } else {
-                            buffer_ch.extend_from_slice(
-                                &block_ch[start_frame_in_block..start_frame_in_block + frames],
-                            );
-                        };
-                    }
-                } else {
-                    // If no block exists, output silence.
-                    for buffer_ch in heap.read_buffer.block.iter_mut() {
-                        buffer_ch.resize(buffer_ch.len() + frames, Default::default());
-                    }
-                }
-            };
-
         let end_frame_in_block = self.current_frame_in_block + frames;
         if end_frame_in_block > self.block_size {
             // Data spans between two blocks, so two copies need to be performed.
@@ -945,5 +887,57 @@ impl<D: Decoder> Drop for ReadDiskStream<D> {
         // Tell the server to deallocate any heap data.
         // This cannot fail because this is the only place the signal is ever sent.
         let _ = self.close_signal_tx.push(self.heap_data.take());
+    }
+}
+
+fn copy_block_into_read_buffer<T: Copy + Default + Send>(
+    heap: &mut HeapData<T>,
+    block_index: usize,
+    start_frame_in_block: usize,
+    frames: usize,
+) {
+    let block_entry = &heap.prefetch_buffer[block_index];
+
+    let maybe_block = match block_entry.use_cache_index {
+        Some(cache_index) => heap.caches[cache_index]
+            .cache
+            .as_ref()
+            .map(|cache| &cache.blocks[block_index]),
+        None => {
+            block_entry.block.as_ref()
+
+            // TODO: warn of buffer underflow.
+        }
+    };
+
+    let Some(block) = maybe_block else {
+        // If no block exists, output silence.
+        for buffer_ch in heap.read_buffer.block.iter_mut() {
+            buffer_ch.resize(buffer_ch.len() + frames, Default::default());
+        }
+
+        return;
+    };
+
+    for (buffer_ch, block_ch) in heap.read_buffer.block.iter_mut().zip(block.block.iter()) {
+        // If for some reason the decoder did not fill this block fully,
+        // fill the rest with zeros.
+        if block_ch.len() < start_frame_in_block + frames {
+            if block_ch.len() <= start_frame_in_block {
+                // The block has no more data to copy, fill all frames with zeros.
+                buffer_ch.resize(buffer_ch.len() + frames, Default::default());
+            } else {
+                let copy_frames = block_ch.len() - start_frame_in_block;
+
+                buffer_ch.extend_from_slice(
+                    &block_ch[start_frame_in_block..start_frame_in_block + copy_frames],
+                );
+
+                buffer_ch.resize(buffer_ch.len() + frames - copy_frames, Default::default());
+            }
+        } else {
+            buffer_ch
+                .extend_from_slice(&block_ch[start_frame_in_block..start_frame_in_block + frames]);
+        };
     }
 }

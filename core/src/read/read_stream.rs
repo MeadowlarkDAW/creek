@@ -910,7 +910,7 @@ fn copy_block_into_read_buffer<T: Copy + Default + Send>(
         }
     };
 
-    let Some(block) = maybe_block else {
+    if maybe_block.is_none() {
         // If no block exists, output silence.
         for buffer_ch in heap.read_buffer.block.iter_mut() {
             buffer_ch.resize(buffer_ch.len() + frames, Default::default());
@@ -918,6 +918,8 @@ fn copy_block_into_read_buffer<T: Copy + Default + Send>(
 
         return;
     };
+
+    let block = maybe_block.unwrap();
 
     for (buffer_ch, block_ch) in heap.read_buffer.block.iter_mut().zip(block.block.iter()) {
         // If for some reason the decoder did not fill this block fully,

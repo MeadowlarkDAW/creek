@@ -113,8 +113,6 @@ impl<D: Decoder> ReadServer<D> {
 
                         let decode_res = self.decoder.decode(&mut block);
 
-                        block.ensure_correct_size(self.block_size);
-
                         match decode_res {
                             Ok(()) => {
                                 self.send_msg(ServerToClientMsg::ReadIntoBlockRes {
@@ -186,8 +184,6 @@ impl<D: Decoder> ReadServer<D> {
                     block.clear();
 
                     let decode_res = self.decoder.decode(block);
-
-                    block.ensure_correct_size(self.block_size);
 
                     if let Err(e) = decode_res {
                         self.send_msg(ServerToClientMsg::FatalError(e));

@@ -4,6 +4,7 @@
 
 - Improved performance when decoding near the end of a file
 - Improved the accuracy when seeking to a large frame value with the Symphonia decoder
+- Bumped minimum supported Rust version to 1.65
 
 ## Version 1.2.0 (2023-12-28)
 

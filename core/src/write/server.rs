@@ -6,6 +6,15 @@ use crate::{FileInfo, SERVER_WAIT_TIME};
 
 use super::{ClientToServerMsg, Encoder, HeapData, ServerToClientMsg, WriteStatus};
 
+pub(crate) struct WriteServerOptions<E: Encoder> {
+    pub file: PathBuf,
+    pub num_write_blocks: usize,
+    pub block_size: usize,
+    pub num_channels: u16,
+    pub sample_rate: u32,
+    pub additional_opts: E::AdditionalOpts,
+}
+
 pub(crate) struct WriteServer<E: Encoder> {
     to_client_tx: Producer<ServerToClientMsg<E>>,
     from_client_rx: Consumer<ClientToServerMsg<E>>,
@@ -22,30 +31,23 @@ pub(crate) struct WriteServer<E: Encoder> {
 }
 
 impl<E: Encoder> WriteServer<E> {
-    #[allow(clippy::new_ret_no_self)] // TODO: Rename to `spawn` (breaking API change)
-    #[allow(clippy::too_many_arguments)] // TODO: Reduce number of arguments
-    pub fn new(
-        file: PathBuf,
-        num_write_blocks: usize,
-        block_size: usize,
-        num_channels: u16,
-        sample_rate: u32,
+    pub(crate) fn spawn(
+        opts: WriteServerOptions<E>,
         to_client_tx: Producer<ServerToClientMsg<E>>,
         from_client_rx: Consumer<ClientToServerMsg<E>>,
         close_signal_rx: Consumer<Option<HeapData<E::T>>>,
-        additional_opts: E::AdditionalOpts,
     ) -> Result<FileInfo<E::FileParams>, E::OpenError> {
         let (mut open_tx, mut open_rx) =
             RingBuffer::<Result<FileInfo<E::FileParams>, E::OpenError>>::new(1);
 
         std::thread::spawn(move || {
             match E::new(
-                file,
-                num_channels,
-                sample_rate,
-                block_size,
-                num_write_blocks,
-                additional_opts,
+                opts.file,
+                opts.num_channels,
+                opts.sample_rate,
+                opts.block_size,
+                opts.num_write_blocks,
+                opts.additional_opts,
             ) {
                 Ok((encoder, file_info)) => {
                     // Push cannot fail because only one message is ever sent.

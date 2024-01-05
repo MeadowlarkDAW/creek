@@ -72,7 +72,7 @@ impl DemoPlayerApp {
         let num_frames = read_stream.info().num_frames;
 
         to_player_tx
-            .push(GuiToProcessMsg::UseStream(read_stream))
+            .push(GuiToProcessMsg::UseStream(Box::new(read_stream)))
             .unwrap();
 
         let loop_start = 0;
@@ -114,6 +114,7 @@ impl eframe::App for DemoPlayerApp {
                 ProcessToGuiMsg::Buffering => {
                     self.buffering_anim = BUFFERING_FADEOUT_FRAMES;
                 }
+                ProcessToGuiMsg::DropOldStream(_) => {}
             }
         }
 

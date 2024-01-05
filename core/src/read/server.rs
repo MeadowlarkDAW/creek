@@ -6,6 +6,14 @@ use crate::{FileInfo, SERVER_WAIT_TIME};
 
 use super::{ClientToServerMsg, DataBlock, DataBlockCache, Decoder, HeapData, ServerToClientMsg};
 
+pub(crate) struct ReadServerOptions<D: Decoder> {
+    pub file: PathBuf,
+    pub start_frame: usize,
+    pub num_prefetch_blocks: usize,
+    pub block_size: usize,
+    pub additional_opts: D::AdditionalOpts,
+}
+
 pub(crate) struct ReadServer<D: Decoder> {
     to_client_tx: Producer<ServerToClientMsg<D>>,
     from_client_rx: Consumer<ClientToServerMsg<D>>,
@@ -25,23 +33,22 @@ pub(crate) struct ReadServer<D: Decoder> {
 }
 
 impl<D: Decoder> ReadServer<D> {
-    #[allow(clippy::new_ret_no_self)] // TODO: Rename to `spawn` (breaking API change)
-    #[allow(clippy::too_many_arguments)] // TODO: Reduce number of arguments
-    pub(crate) fn new(
-        file: PathBuf,
-        start_frame: usize,
-        num_prefetch_blocks: usize,
-        block_size: usize,
+    pub(crate) fn spawn(
+        opts: ReadServerOptions<D>,
         to_client_tx: Producer<ServerToClientMsg<D>>,
         from_client_rx: Consumer<ClientToServerMsg<D>>,
         close_signal_rx: Consumer<Option<HeapData<D::T>>>,
-        additional_opts: D::AdditionalOpts,
     ) -> Result<FileInfo<D::FileParams>, D::OpenError> {
         let (mut open_tx, mut open_rx) =
             RingBuffer::<Result<FileInfo<D::FileParams>, D::OpenError>>::new(1);
 
         std::thread::spawn(move || {
-            match D::new(file, start_frame, block_size, additional_opts) {
+            match D::new(
+                opts.file,
+                opts.start_frame,
+                opts.block_size,
+                opts.additional_opts,
+            ) {
                 Ok((decoder, file_info)) => {
                     let num_channels = file_info.num_channels;
 
@@ -56,8 +63,8 @@ impl<D: Decoder> ReadServer<D> {
                         block_pool: Vec::new(),
                         cache_pool: Vec::new(),
                         num_channels: usize::from(num_channels),
-                        num_prefetch_blocks,
-                        block_size,
+                        num_prefetch_blocks: opts.num_prefetch_blocks,
+                        block_size: opts.block_size,
                         run: true,
                         client_closed: false,
                     });
@@ -79,8 +86,13 @@ impl<D: Decoder> ReadServer<D> {
     }
 
     fn run(mut self) {
-        #[allow(clippy::type_complexity)] // TODO: Use a dedicated type for the elements
-        let mut cache_requests: Vec<(usize, Option<DataBlockCache<D::T>>, usize)> = Vec::new();
+        struct CacheRequest<D: Decoder> {
+            cache_index: usize,
+            cache: Option<DataBlockCache<D::T>>,
+            start_frame: usize,
+        }
+
+        let mut cache_requests: Vec<CacheRequest<D>> = Vec::new();
 
         while self.run {
             let mut do_sleep = true;
@@ -147,7 +159,11 @@ impl<D: Decoder> ReadServer<D> {
                         start_frame,
                     } => {
                         // Prioritize read blocks over caching.
-                        cache_requests.push((cache_index, cache, start_frame));
+                        cache_requests.push(CacheRequest {
+                            cache_index,
+                            cache,
+                            start_frame,
+                        });
                     }
                     ClientToServerMsg::DisposeCache { cache } => {
                         // Store the cache to be reused.
@@ -156,8 +172,8 @@ impl<D: Decoder> ReadServer<D> {
                 }
             }
 
-            while let Some((cache_index, cache, start_frame)) = cache_requests.pop() {
-                let mut cache = cache.unwrap_or(
+            while let Some(request) = cache_requests.pop() {
+                let mut cache = request.cache.unwrap_or(
                     // Try using one in the pool if it exists.
                     self.cache_pool.pop().unwrap_or(
                         // No caches in pool. Create a new one.
@@ -172,7 +188,7 @@ impl<D: Decoder> ReadServer<D> {
                 let current_frame = self.decoder.current_frame();
 
                 // Seek to the position the client wants to cache.
-                if let Err(e) = self.decoder.seek(start_frame) {
+                if let Err(e) = self.decoder.seek(request.start_frame) {
                     self.send_msg(ServerToClientMsg::FatalError(e));
                     self.run = false;
                     do_sleep = false;
@@ -202,9 +218,9 @@ impl<D: Decoder> ReadServer<D> {
                 }
 
                 self.send_msg(ServerToClientMsg::CacheRes {
-                    cache_index,
+                    cache_index: request.cache_index,
                     cache,
-                    wanted_start_frame: start_frame,
+                    wanted_start_frame: request.start_frame,
                 });
 
                 // If any new messages have been received while caching, prioritize those

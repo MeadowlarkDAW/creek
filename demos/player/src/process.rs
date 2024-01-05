@@ -11,7 +11,7 @@ pub enum PlaybackState {
 }
 
 pub struct Process {
-    read_disk_stream: Option<ReadDiskStream<SymphoniaDecoder>>,
+    read_disk_stream: Option<Box<ReadDiskStream<SymphoniaDecoder>>>,
 
     to_gui_tx: Producer<ProcessToGuiMsg>,
     from_gui_rx: Consumer<GuiToProcessMsg>,
@@ -72,6 +72,14 @@ impl Process {
                     self.playback_state = PlaybackState::Paused;
                     self.loop_start = 0;
                     self.loop_end = 0;
+
+                    if let Some(old_stream) = self.read_disk_stream.take() {
+                        // Send the old stream to be deallocated on a different thread.
+                        let _ = self
+                            .to_gui_tx
+                            .push(ProcessToGuiMsg::DropOldStream(old_stream));
+                    }
+
                     self.read_disk_stream = Some(read_disk_stream);
                 }
                 GuiToProcessMsg::SetLoop { start, end } => {
@@ -222,6 +230,14 @@ impl Process {
 
         self.had_cache_miss_last_cycle = cache_missed_this_cycle;
         Ok(())
+    }
+}
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        if let Some(stream) = self.read_disk_stream.take() {
+            let _ = self.to_gui_tx.push(ProcessToGuiMsg::DropOldStream(stream));
+        }
     }
 }
 

@@ -7,6 +7,7 @@ use super::{
     ClientToServerMsg, DataBlock, Decoder, HeapData, ReadData, ReadServer, ReadStreamOptions,
     ServerToClientMsg,
 };
+use crate::read::server::ReadServerOptions;
 use crate::{FileInfo, SERVER_WAIT_TIME};
 
 /// Describes how to search for suitable caches when seeking in a [`ReadDiskStream`].
@@ -32,6 +33,15 @@ pub enum SeekMode {
     /// Seek without searching for a suitable cache. This **will** cause the stream
     /// to buffer.
     NoCache,
+}
+
+struct ReadDiskStreamOptions<D: Decoder> {
+    start_frame: usize,
+    num_cache_blocks: usize,
+    num_look_ahead_blocks: usize,
+    max_num_caches: usize,
+    block_size: usize,
+    file_info: FileInfo<D::FileParams>,
 }
 
 /// A realtime-safe disk-streaming reader of audio files.
@@ -65,21 +75,32 @@ impl<D: Decoder> ReadDiskStream<D> {
     /// * `file` - The path to the file to open.
     /// * `start_frame` - The frame in the file to start reading from.
     /// * `stream_opts` - Additional stream options.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if `stream_block_size`, `stream_num_look_ahead_blocks`,
+    /// or `stream_server_msg_channel_size` is `0`.
     pub fn new<P: Into<PathBuf>>(
         file: P,
         start_frame: usize,
         stream_opts: ReadStreamOptions<D>,
     ) -> Result<ReadDiskStream<D>, D::OpenError> {
-        assert_ne!(stream_opts.block_size, 0);
-        assert_ne!(stream_opts.num_look_ahead_blocks, 0);
-        assert_ne!(stream_opts.server_msg_channel_size, Some(0));
+        let ReadStreamOptions {
+            num_cache_blocks,
+            num_caches,
+            additional_opts,
+            num_look_ahead_blocks,
+            block_size,
+            server_msg_channel_size,
+        } = stream_opts;
+
+        assert_ne!(block_size, 0);
+        assert_ne!(num_look_ahead_blocks, 0);
+        assert_ne!(server_msg_channel_size, Some(0));
 
         // Reserve ample space for the message channels.
-        let msg_channel_size = stream_opts.server_msg_channel_size.unwrap_or(
-            ((stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks) * 4)
-                + (stream_opts.num_caches * 4)
-                + 8,
-        );
+        let msg_channel_size = server_msg_channel_size
+            .unwrap_or(((num_cache_blocks + num_look_ahead_blocks) * 4) + (num_caches * 4) + 8);
 
         let (to_server_tx, from_client_rx) =
             RingBuffer::<ClientToServerMsg<D>>::new(msg_channel_size);
@@ -91,27 +112,31 @@ impl<D: Decoder> ReadDiskStream<D> {
 
         let file: PathBuf = file.into();
 
-        match ReadServer::new(
-            file,
-            start_frame,
-            stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks,
-            stream_opts.block_size,
+        match ReadServer::spawn(
+            ReadServerOptions {
+                file,
+                start_frame,
+                num_prefetch_blocks: num_cache_blocks + num_look_ahead_blocks,
+                block_size,
+                additional_opts,
+            },
             to_client_tx,
             from_client_rx,
             close_signal_rx,
-            stream_opts.additional_opts,
         ) {
             Ok(file_info) => {
                 let client = ReadDiskStream::create(
+                    ReadDiskStreamOptions {
+                        start_frame,
+                        num_cache_blocks,
+                        num_look_ahead_blocks,
+                        max_num_caches: num_caches,
+                        block_size,
+                        file_info,
+                    },
                     to_server_tx,
                     from_server_rx,
                     close_signal_tx,
-                    start_frame,
-                    stream_opts.num_cache_blocks,
-                    stream_opts.num_look_ahead_blocks,
-                    stream_opts.num_caches,
-                    stream_opts.block_size,
-                    file_info,
                 );
 
                 Ok(client)
@@ -120,18 +145,21 @@ impl<D: Decoder> ReadDiskStream<D> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)] // TODO: Reduce number of arguments
-    pub(crate) fn create(
+    fn create(
+        opts: ReadDiskStreamOptions<D>,
         to_server_tx: Producer<ClientToServerMsg<D>>,
         from_server_rx: Consumer<ServerToClientMsg<D>>,
         close_signal_tx: Producer<Option<HeapData<D::T>>>,
-        start_frame: usize,
-        num_cache_blocks: usize,
-        num_look_ahead_blocks: usize,
-        max_num_caches: usize,
-        block_size: usize,
-        file_info: FileInfo<D::FileParams>,
     ) -> Self {
+        let ReadDiskStreamOptions {
+            start_frame,
+            num_cache_blocks,
+            num_look_ahead_blocks,
+            max_num_caches,
+            block_size,
+            file_info,
+        } = opts;
+
         let num_prefetch_blocks = num_cache_blocks + num_look_ahead_blocks;
 
         let read_buffer = DataBlock::new(usize::from(file_info.num_channels), block_size);
@@ -219,8 +247,10 @@ impl<D: Decoder> ReadDiskStream<D> {
     /// relied on, then any blocks relying on the oldest cache will be silenced. In this case, (false)
     /// will be returned.
     pub fn can_move_cache(&mut self, cache_index: usize) -> bool {
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self.heap_data.as_ref().unwrap();
+        let Some(heap) = self.heap_data.as_ref() else {
+            // This will never return here because `heap_data` can only be `None` in the destructor.
+            return false;
+        };
 
         let mut using_cache = false;
         let mut using_temp_cache = false;
@@ -266,8 +296,10 @@ impl<D: Decoder> ReadDiskStream<D> {
             return Err(ReadError::FatalError(FatalReadError::StreamClosed));
         }
 
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self.heap_data.as_mut().unwrap();
+        let Some(heap) = self.heap_data.as_mut() else {
+            // This will never return here because `heap_data` can only be `None` in the destructor.
+            return Ok(false);
+        };
 
         if cache_index >= heap.caches.len() - 2 {
             return Err(ReadError::CacheIndexOutOfRange {
@@ -373,8 +405,10 @@ impl<D: Decoder> ReadDiskStream<D> {
             return Err(ReadError::IOServerChannelFull);
         }
 
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self.heap_data.as_mut().unwrap();
+        let Some(heap) = self.heap_data.as_mut() else {
+            // This will never return here because `heap_data` can only be `None` in the destructor.
+            return Ok(false);
+        };
 
         let mut found_cache = None;
 
@@ -509,8 +543,10 @@ impl<D: Decoder> ReadDiskStream<D> {
             return Ok(false);
         }
 
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self.heap_data.as_ref().unwrap();
+        let Some(heap) = self.heap_data.as_mut() else {
+            // This will never return here because `heap_data` can only be `None` in the destructor.
+            return Ok(false);
+        };
 
         // Check if the next two blocks are ready.
 
@@ -631,8 +667,10 @@ impl<D: Decoder> ReadDiskStream<D> {
 
         // Retrieve any data sent from the server.
 
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self.heap_data.as_mut().unwrap();
+        let Some(heap) = self.heap_data.as_mut() else {
+            // This will never return here because `heap_data` can only be `None` in the destructor.
+            return Ok(());
+        };
 
         loop {
             // Check that there is at-least one slot open before popping the next message.
@@ -765,8 +803,10 @@ impl<D: Decoder> ReadDiskStream<D> {
 
             // Copy from first block.
             {
-                // This check should never fail because it can only be `None` in the destructor.
-                let heap = self.heap_data.as_mut().unwrap();
+                let Some(heap) = self.heap_data.as_mut() else {
+                    // This will never return here because `heap_data` can only be `None` in the destructor.
+                    return Err(ReadError::IOServerChannelFull);
+                };
 
                 heap.read_buffer.clear();
 
@@ -782,8 +822,10 @@ impl<D: Decoder> ReadDiskStream<D> {
 
             // Copy from second block
             {
-                // This check should never fail because it can only be `None` in the destructor.
-                let heap = self.heap_data.as_mut().unwrap();
+                let Some(heap) = self.heap_data.as_mut() else {
+                    // This will never return here because `heap_data` can only be `None` in the destructor.
+                    return Err(ReadError::IOServerChannelFull);
+                };
 
                 copy_block_into_read_buffer(heap, self.current_block_index, 0, second_len);
             }
@@ -792,8 +834,10 @@ impl<D: Decoder> ReadDiskStream<D> {
         } else {
             // Only need to copy from current block.
             {
-                // This check should never fail because it can only be `None` in the destructor.
-                let heap = self.heap_data.as_mut().unwrap();
+                let Some(heap) = self.heap_data.as_mut() else {
+                    // This will never return here because `heap_data` can only be `None` in the destructor.
+                    return Err(ReadError::IOServerChannelFull);
+                };
 
                 heap.read_buffer.clear();
 
@@ -812,8 +856,10 @@ impl<D: Decoder> ReadDiskStream<D> {
             }
         }
 
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self.heap_data.as_mut().unwrap();
+        let Some(heap) = self.heap_data.as_mut() else {
+            // This will never return here because `heap_data` can only be `None` in the destructor.
+            return Err(ReadError::IOServerChannelFull);
+        };
 
         // This check should never fail because it can only be `None` in the destructor.
         Ok(ReadData::new(
@@ -824,8 +870,10 @@ impl<D: Decoder> ReadDiskStream<D> {
     }
 
     fn advance_to_next_block(&mut self) -> Result<(), ReadError<D::FatalError>> {
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self.heap_data.as_mut().unwrap();
+        let Some(heap) = self.heap_data.as_mut() else {
+            // This will never return here because `heap_data` can only be `None` in the destructor.
+            return Ok(());
+        };
 
         let entry = &mut heap.prefetch_buffer[self.current_block_index];
 

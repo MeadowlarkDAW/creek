@@ -6,6 +6,7 @@ use super::{
     ClientToServerMsg, Encoder, HeapData, ServerToClientMsg, WriteBlock, WriteServer,
     WriteStreamOptions,
 };
+use crate::write::server::WriteServerOptions;
 use crate::{FileInfo, SERVER_WAIT_TIME};
 
 /// A realtime-safe disk-streaming writer of audio files.
@@ -34,22 +35,34 @@ impl<E: Encoder> WriteDiskStream<E> {
     /// * `num_channels` - The number of channels in the file.
     /// * `sample_rate` - The sample rate of the file.
     /// * `stream_opts` - Additional stream options.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if `num_channels`, `sample_rate`, `stream_opts.block_size`,
+    /// `stream_opts.num_write_blocks`, or `stream_opts.server_msg_channel_size` is `0`.
     pub fn new<P: Into<PathBuf>>(
         file: P,
         num_channels: u16,
         sample_rate: u32,
         stream_opts: WriteStreamOptions<E>,
     ) -> Result<WriteDiskStream<E>, E::OpenError> {
+        let WriteStreamOptions {
+            additional_opts,
+            num_write_blocks,
+            block_size,
+            server_msg_channel_size,
+        } = stream_opts;
+
         assert_ne!(num_channels, 0);
         assert_ne!(sample_rate, 0);
-        assert_ne!(stream_opts.block_size, 0);
-        assert_ne!(stream_opts.num_write_blocks, 0);
-        assert_ne!(stream_opts.server_msg_channel_size, Some(0));
+        assert_ne!(block_size, 0);
+        assert_ne!(num_write_blocks, 0);
+        assert_ne!(server_msg_channel_size, Some(0));
 
         // Reserve ample space for the message channels.
         let msg_channel_size = stream_opts
             .server_msg_channel_size
-            .unwrap_or((stream_opts.num_write_blocks * 4) + 8);
+            .unwrap_or((num_write_blocks * 4) + 8);
 
         let (to_server_tx, from_client_rx) =
             RingBuffer::<ClientToServerMsg<E>>::new(msg_channel_size);
@@ -61,24 +74,26 @@ impl<E: Encoder> WriteDiskStream<E> {
 
         let file: PathBuf = file.into();
 
-        match WriteServer::new(
-            file,
-            stream_opts.num_write_blocks,
-            stream_opts.block_size,
-            num_channels,
-            sample_rate,
+        match WriteServer::spawn(
+            WriteServerOptions {
+                file,
+                num_write_blocks,
+                block_size,
+                num_channels,
+                sample_rate,
+                additional_opts,
+            },
             to_client_tx,
             from_client_rx,
             close_signal_rx,
-            stream_opts.additional_opts,
         ) {
             Ok(file_info) => {
                 let client = WriteDiskStream::create(
                     to_server_tx,
                     from_server_rx,
                     close_signal_tx,
-                    stream_opts.num_write_blocks,
-                    stream_opts.block_size,
+                    num_write_blocks,
+                    block_size,
                     file_info,
                 );
 
@@ -146,8 +161,10 @@ impl<E: Encoder> WriteDiskStream<E> {
 
         self.poll()?;
 
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self.heap_data.as_ref().unwrap();
+        let Some(heap) = self.heap_data.as_mut() else {
+            // This will never return here because `heap_data` can only be `None` in the destructor.
+            return Ok(false);
+        };
 
         Ok(heap.current_block.is_some()
             && heap.next_block.is_some()
@@ -212,8 +229,11 @@ impl<E: Encoder> WriteDiskStream<E> {
             return Err(WriteError::IOServerChannelFull);
         }
 
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self.heap_data.as_mut().unwrap();
+        let Some(heap) = self.heap_data.as_mut() else {
+            // This will never return here because `heap_data` can only be `None`
+            // in the destructor.
+            return Ok(());
+        };
 
         // Check that there are available blocks to write to.
         if let Some(mut current_block) = heap.current_block.take() {
@@ -308,8 +328,11 @@ impl<E: Encoder> WriteDiskStream<E> {
         self.finished = true;
 
         {
-            // This check should never fail because it can only be `None` in the destructor.
-            let heap = self.heap_data.as_mut().unwrap();
+            let Some(heap) = self.heap_data.as_mut() else {
+                // This will never return here because `heap_data` can only be `None`
+                // in the destructor.
+                return Ok(());
+            };
 
             if let Some(mut current_block) = heap.current_block.take() {
                 if !current_block.block[0].is_empty() {
@@ -393,8 +416,11 @@ impl<E: Encoder> WriteDiskStream<E> {
         // a previous step.
         let _ = self.to_server_tx.push(ClientToServerMsg::DiscardAndRestart);
 
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self.heap_data.as_mut().unwrap();
+        let Some(heap) = self.heap_data.as_mut() else {
+            // This will never return here because `heap_data` can only be `None`
+            // in the destructor.
+            return Ok(());
+        };
 
         if let Some(block) = &mut heap.current_block {
             block.clear();
@@ -417,8 +443,11 @@ impl<E: Encoder> WriteDiskStream<E> {
 
         // Retrieve any data sent from the server.
 
-        // This check should never fail because it can only be `None` in the destructor.
-        let heap = self.heap_data.as_mut().unwrap();
+        let Some(heap) = self.heap_data.as_mut() else {
+            // This will never return here because `heap_data` can only be `None`
+            // in the destructor.
+            return Ok(());
+        };
 
         while let Ok(msg) = self.from_server_rx.pop() {
             match msg {

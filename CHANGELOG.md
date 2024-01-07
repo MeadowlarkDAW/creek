@@ -1,5 +1,10 @@
 # Version History
 
+## Version 1.2.2 (2024-1-5)
+
+- Fixed clippy warnings
+- Added panic documentation
+
 ## Version 1.2.1 (2024-1-3)
 
 - Improved performance when decoding near the end of a file

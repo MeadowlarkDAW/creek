@@ -13,5 +13,5 @@ repository = "https://github.com/RustyDAW/creek"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-creek-core = { version = "0.2.1", path = "../core" }
+creek-core = { version = "0.2.2", path = "../core" }
 byte-slice-cast = "1.0.0"

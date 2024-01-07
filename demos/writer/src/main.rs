@@ -27,7 +27,7 @@ fn main() {
     let (to_gui_tx, from_process_rx) = RingBuffer::<ProcessToGuiMsg>::new(256);
     let (to_process_tx, from_gui_rx) = RingBuffer::<GuiToProcessMsg>::new(64);
 
-    let (_cpal_stream, sample_rate) = output::Output::new(to_gui_tx, from_gui_rx);
+    let (_cpal_stream, sample_rate) = output::spawn_cpal_stream(to_gui_tx, from_gui_rx);
 
     eframe::run_native(
         "creek demo writer",

@@ -46,16 +46,23 @@ impl<E: Encoder> WriteDiskStream<E> {
         sample_rate: u32,
         stream_opts: WriteStreamOptions<E>,
     ) -> Result<WriteDiskStream<E>, E::OpenError> {
+        let WriteStreamOptions {
+            additional_opts,
+            num_write_blocks,
+            block_size,
+            server_msg_channel_size,
+        } = stream_opts;
+
         assert_ne!(num_channels, 0);
         assert_ne!(sample_rate, 0);
-        assert_ne!(stream_opts.block_size, 0);
-        assert_ne!(stream_opts.num_write_blocks, 0);
-        assert_ne!(stream_opts.server_msg_channel_size, Some(0));
+        assert_ne!(block_size, 0);
+        assert_ne!(num_write_blocks, 0);
+        assert_ne!(server_msg_channel_size, Some(0));
 
         // Reserve ample space for the message channels.
         let msg_channel_size = stream_opts
             .server_msg_channel_size
-            .unwrap_or((stream_opts.num_write_blocks * 4) + 8);
+            .unwrap_or((num_write_blocks * 4) + 8);
 
         let (to_server_tx, from_client_rx) =
             RingBuffer::<ClientToServerMsg<E>>::new(msg_channel_size);
@@ -70,11 +77,11 @@ impl<E: Encoder> WriteDiskStream<E> {
         match WriteServer::spawn(
             WriteServerOptions {
                 file,
-                num_write_blocks: stream_opts.num_write_blocks,
-                block_size: stream_opts.block_size,
+                num_write_blocks,
+                block_size,
                 num_channels,
                 sample_rate,
-                additional_opts: stream_opts.additional_opts,
+                additional_opts,
             },
             to_client_tx,
             from_client_rx,
@@ -85,8 +92,8 @@ impl<E: Encoder> WriteDiskStream<E> {
                     to_server_tx,
                     from_server_rx,
                     close_signal_tx,
-                    stream_opts.num_write_blocks,
-                    stream_opts.block_size,
+                    num_write_blocks,
+                    block_size,
                     file_info,
                 );
 

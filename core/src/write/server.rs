@@ -37,17 +37,26 @@ impl<E: Encoder> WriteServer<E> {
         from_client_rx: Consumer<ClientToServerMsg<E>>,
         close_signal_rx: Consumer<Option<HeapData<E::T>>>,
     ) -> Result<FileInfo<E::FileParams>, E::OpenError> {
+        let WriteServerOptions {
+            file,
+            num_write_blocks,
+            block_size,
+            num_channels,
+            sample_rate,
+            additional_opts,
+        } = opts;
+
         let (mut open_tx, mut open_rx) =
             RingBuffer::<Result<FileInfo<E::FileParams>, E::OpenError>>::new(1);
 
         std::thread::spawn(move || {
             match E::new(
-                opts.file,
-                opts.num_channels,
-                opts.sample_rate,
-                opts.block_size,
-                opts.num_write_blocks,
-                opts.additional_opts,
+                file,
+                num_channels,
+                sample_rate,
+                block_size,
+                num_write_blocks,
+                additional_opts,
             ) {
                 Ok((encoder, file_info)) => {
                     // Push cannot fail because only one message is ever sent.

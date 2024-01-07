@@ -78,23 +78,29 @@ impl<D: Decoder> ReadDiskStream<D> {
     ///
     /// # Panics
     ///
-    /// This will panic if `stream_opts.block_size`, `stream_opts.num_look_ahead_blocks`,
-    /// or `stream_opts.server_msg_channel_size` is `0`.
+    /// This will panic if `stream_block_size`, `stream_num_look_ahead_blocks`,
+    /// or `stream_server_msg_channel_size` is `0`.
     pub fn new<P: Into<PathBuf>>(
         file: P,
         start_frame: usize,
         stream_opts: ReadStreamOptions<D>,
     ) -> Result<ReadDiskStream<D>, D::OpenError> {
-        assert_ne!(stream_opts.block_size, 0);
-        assert_ne!(stream_opts.num_look_ahead_blocks, 0);
-        assert_ne!(stream_opts.server_msg_channel_size, Some(0));
+        let ReadStreamOptions {
+            num_cache_blocks,
+            num_caches,
+            additional_opts,
+            num_look_ahead_blocks,
+            block_size,
+            server_msg_channel_size,
+        } = stream_opts;
+
+        assert_ne!(block_size, 0);
+        assert_ne!(num_look_ahead_blocks, 0);
+        assert_ne!(server_msg_channel_size, Some(0));
 
         // Reserve ample space for the message channels.
-        let msg_channel_size = stream_opts.server_msg_channel_size.unwrap_or(
-            ((stream_opts.num_cache_blocks + stream_opts.num_look_ahead_blocks) * 4)
-                + (stream_opts.num_caches * 4)
-                + 8,
-        );
+        let msg_channel_size = server_msg_channel_size
+            .unwrap_or(((num_cache_blocks + num_look_ahead_blocks) * 4) + (num_caches * 4) + 8);
 
         let (to_server_tx, from_client_rx) =
             RingBuffer::<ClientToServerMsg<D>>::new(msg_channel_size);
@@ -110,10 +116,9 @@ impl<D: Decoder> ReadDiskStream<D> {
             ReadServerOptions {
                 file,
                 start_frame,
-                num_prefetch_blocks: stream_opts.num_cache_blocks
-                    + stream_opts.num_look_ahead_blocks,
-                block_size: stream_opts.block_size,
-                additional_opts: stream_opts.additional_opts,
+                num_prefetch_blocks: num_cache_blocks + num_look_ahead_blocks,
+                block_size,
+                additional_opts,
             },
             to_client_tx,
             from_client_rx,
@@ -123,10 +128,10 @@ impl<D: Decoder> ReadDiskStream<D> {
                 let client = ReadDiskStream::create(
                     ReadDiskStreamOptions {
                         start_frame,
-                        num_cache_blocks: stream_opts.num_cache_blocks,
-                        num_look_ahead_blocks: stream_opts.num_look_ahead_blocks,
-                        max_num_caches: stream_opts.num_caches,
-                        block_size: stream_opts.block_size,
+                        num_cache_blocks,
+                        num_look_ahead_blocks,
+                        max_num_caches: num_caches,
+                        block_size,
                         file_info,
                     },
                     to_server_tx,
@@ -146,12 +151,21 @@ impl<D: Decoder> ReadDiskStream<D> {
         from_server_rx: Consumer<ServerToClientMsg<D>>,
         close_signal_tx: Producer<Option<HeapData<D::T>>>,
     ) -> Self {
-        let num_prefetch_blocks = opts.num_cache_blocks + opts.num_look_ahead_blocks;
+        let ReadDiskStreamOptions {
+            start_frame,
+            num_cache_blocks,
+            num_look_ahead_blocks,
+            max_num_caches,
+            block_size,
+            file_info,
+        } = opts;
 
-        let read_buffer = DataBlock::new(usize::from(opts.file_info.num_channels), opts.block_size);
+        let num_prefetch_blocks = num_cache_blocks + num_look_ahead_blocks;
+
+        let read_buffer = DataBlock::new(usize::from(file_info.num_channels), block_size);
 
         // Reserve the last two caches as temporary caches.
-        let max_num_caches = opts.max_num_caches + 2;
+        let max_num_caches = max_num_caches + 2;
 
         let mut caches: Vec<DataBlockCacheEntry<D::T>> = Vec::with_capacity(max_num_caches);
         for _ in 0..max_num_caches {
@@ -166,7 +180,7 @@ impl<D: Decoder> ReadDiskStream<D> {
 
         let mut prefetch_buffer: Vec<DataBlockEntry<D::T>> =
             Vec::with_capacity(num_prefetch_blocks);
-        let mut wanted_start_frame = opts.start_frame;
+        let mut wanted_start_frame = start_frame;
         for _ in 0..num_prefetch_blocks {
             prefetch_buffer.push(DataBlockEntry {
                 use_cache_index: None,
@@ -174,7 +188,7 @@ impl<D: Decoder> ReadDiskStream<D> {
                 wanted_start_frame,
             });
 
-            wanted_start_frame += opts.block_size;
+            wanted_start_frame += block_size;
         }
 
         let heap_data = Some(HeapData {
@@ -192,18 +206,18 @@ impl<D: Decoder> ReadDiskStream<D> {
 
             current_block_index: 0,
             next_block_index: 1,
-            current_block_start_frame: opts.start_frame,
+            current_block_start_frame: start_frame,
             current_frame_in_block: 0,
 
             temp_cache_index,
             temp_seek_cache_index,
 
             num_prefetch_blocks,
-            prefetch_size: num_prefetch_blocks * opts.block_size,
-            cache_size: opts.num_cache_blocks * opts.block_size,
-            block_size: opts.block_size,
+            prefetch_size: num_prefetch_blocks * block_size,
+            cache_size: num_cache_blocks * block_size,
+            block_size,
 
-            file_info: opts.file_info,
+            file_info,
             fatal_error: false,
         }
     }

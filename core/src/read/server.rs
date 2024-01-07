@@ -39,16 +39,19 @@ impl<D: Decoder> ReadServer<D> {
         from_client_rx: Consumer<ClientToServerMsg<D>>,
         close_signal_rx: Consumer<Option<HeapData<D::T>>>,
     ) -> Result<FileInfo<D::FileParams>, D::OpenError> {
+        let ReadServerOptions {
+            file,
+            start_frame,
+            num_prefetch_blocks,
+            block_size,
+            additional_opts,
+        } = opts;
+
         let (mut open_tx, mut open_rx) =
             RingBuffer::<Result<FileInfo<D::FileParams>, D::OpenError>>::new(1);
 
         std::thread::spawn(move || {
-            match D::new(
-                opts.file,
-                opts.start_frame,
-                opts.block_size,
-                opts.additional_opts,
-            ) {
+            match D::new(file, start_frame, block_size, additional_opts) {
                 Ok((decoder, file_info)) => {
                     let num_channels = file_info.num_channels;
 
@@ -63,8 +66,8 @@ impl<D: Decoder> ReadServer<D> {
                         block_pool: Vec::new(),
                         cache_pool: Vec::new(),
                         num_channels: usize::from(num_channels),
-                        num_prefetch_blocks: opts.num_prefetch_blocks,
-                        block_size: opts.block_size,
+                        num_prefetch_blocks,
+                        block_size,
                         run: true,
                         client_closed: false,
                     });

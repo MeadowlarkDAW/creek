@@ -35,6 +35,7 @@ pub struct SymphoniaDecoder {
 
     playhead_frame: usize,
     reset_decode_buffer: bool,
+    seek_diff: usize,
 }
 
 impl Decoder for SymphoniaDecoder {
@@ -180,6 +181,7 @@ impl Decoder for SymphoniaDecoder {
 
                 playhead_frame: start_frame,
                 reset_decode_buffer: false,
+                seek_diff: 0,
             },
             file_info,
         ))
@@ -205,7 +207,9 @@ impl Decoder for SymphoniaDecoder {
                 track_id: None,
             },
         ) {
-            Ok(_res) => {}
+            Ok(res) => {
+                self.seek_diff = (res.required_ts - res.actual_ts) as usize;
+            }
             Err(e) => {
                 return Err(e);
             }
@@ -273,17 +277,19 @@ impl Decoder for SymphoniaDecoder {
                             match self.decoder.decode(&packet) {
                                 Ok(decoded) => {
                                     self.decode_buffer_len = decoded.frames();
-
-                                    let capacity = decoded.capacity();
-                                    if self.decode_buffer.capacity() < capacity {
-                                        self.decode_buffer =
-                                            AudioBuffer::new(capacity as u64, *decoded.spec());
+                                    if self.seek_diff < self.decode_buffer_len {
+                                        let capacity = decoded.capacity();
+                                        if self.decode_buffer.capacity() < capacity {
+                                            self.decode_buffer =
+                                                AudioBuffer::new(capacity as u64, *decoded.spec());
+                                        }
+                                        decoded.convert(&mut self.decode_buffer);
+                                        self.curr_decode_buffer_frame = self.seek_diff;
+                                        self.seek_diff = 0;
+                                        break;
+                                    } else {
+                                        self.seek_diff -= self.decode_buffer_len;
                                     }
-
-                                    decoded.convert(&mut self.decode_buffer);
-
-                                    self.curr_decode_buffer_frame = 0;
-                                    break;
                                 }
                                 Err(Error::DecodeError(err)) => {
                                     // Decode errors are not fatal.

@@ -208,6 +208,9 @@ impl Decoder for SymphoniaDecoder {
             },
         ) {
             Ok(res) => {
+                // this is always correct for `SeekMode::Accurate`, it may not be for `SeekMode::Coarse`
+                debug_assert!(res.required_ts >= res.actual_ts);
+
                 self.seek_diff = (res.required_ts - res.actual_ts) as usize;
             }
             Err(e) => {

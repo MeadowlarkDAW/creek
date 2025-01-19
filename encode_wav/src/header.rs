@@ -161,9 +161,9 @@ impl Header {
 
     pub fn max_data_bytes(&self) -> u32 {
         if self.format.format_type() == FormatType::Pcm {
-            std::u32::MAX - 36
+            u32::MAX - 36
         } else {
-            std::u32::MAX - 50
+            u32::MAX - 50
         }
     }
 }

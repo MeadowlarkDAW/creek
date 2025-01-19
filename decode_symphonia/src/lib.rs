@@ -84,13 +84,11 @@ impl Decoder for SymphoniaDecoder {
 
         let params = {
             // Get the default stream.
-            let stream = reader
-                .default_track()
-                .ok_or_else(|| OpenError::NoDefaultTrack)?;
+            let stream = reader.default_track().ok_or(OpenError::NoDefaultTrack)?;
 
             stream.codec_params.clone()
         };
-        let num_frames = params.n_frames.ok_or_else(|| OpenError::NoNumFrames)? as usize;
+        let num_frames = params.n_frames.ok_or(OpenError::NoNumFrames)? as usize;
         let sample_rate = params.sample_rate;
 
         // Seek the reader to the requested position.
@@ -159,7 +157,7 @@ impl Decoder for SymphoniaDecoder {
             codec_params: params,
             metadata,
         };
-        let num_channels = (channels.ok_or_else(|| OpenError::NoNumChannels)?).count();
+        let num_channels = (channels.ok_or(OpenError::NoNumChannels)?).count();
 
         let file_info = FileInfo {
             params: info,

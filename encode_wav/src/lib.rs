@@ -232,7 +232,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                 let mut file_name = self
                     .path
                     .file_name()
-                    .ok_or_else(|| WavFatalError::CouldNotGetFileName)?
+                    .ok_or(WavFatalError::CouldNotGetFileName)?
                     .to_os_string();
                 file_name.push(write::num_files_to_file_name_extension(self.num_files));
                 let mut new_file_path = self.path.clone();
@@ -293,7 +293,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                     let mut file_name = self
                         .path
                         .file_name()
-                        .ok_or_else(|| WavFatalError::CouldNotGetFileName)?
+                        .ok_or(WavFatalError::CouldNotGetFileName)?
                         .to_os_string();
                     file_name.push(write::num_files_to_file_name_extension(i));
                     let mut new_file_path = self.path.clone();
@@ -323,7 +323,7 @@ impl<B: WavBitDepth + 'static> Encoder for WavEncoder<B> {
                     let mut file_name = self
                         .path
                         .file_name()
-                        .ok_or_else(|| WavFatalError::CouldNotGetFileName)?
+                        .ok_or(WavFatalError::CouldNotGetFileName)?
                         .to_os_string();
                     file_name.push(write::num_files_to_file_name_extension(i));
                     let mut new_file_path = self.path.clone();

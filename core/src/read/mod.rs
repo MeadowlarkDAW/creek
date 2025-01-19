@@ -71,7 +71,7 @@ pub struct ReadStreamOptions<D: Decoder> {
 
     /// The number of prefetch blocks to store ahead of the cache block. This must be
     /// sufficiently large to ensure enough to time to fill the buffer in the worst
-    /// case latency scenerio.
+    /// case latency scenario.
     ///
     /// This should be left alone unless you know what you are doing.
     pub num_look_ahead_blocks: usize,

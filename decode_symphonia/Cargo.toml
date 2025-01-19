@@ -19,7 +19,7 @@ log = "0.4"
 symphonia = "0.5"
 
 [dev-dependencies]
-float-cmp = "0.9"
+float-cmp = "0.10"
 
 [features]
 aac = [ "symphonia/aac" ]

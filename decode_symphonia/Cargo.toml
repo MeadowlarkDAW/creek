@@ -1,6 +1,6 @@
 [package]
 name = "creek-decode-symphonia"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Billy Messenger <BillyDM@tutamail.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"

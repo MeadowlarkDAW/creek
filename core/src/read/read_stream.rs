@@ -272,9 +272,9 @@ impl<D: Decoder> ReadDiskStream<D> {
     /// This is realtime-safe.
     ///
     /// * `cache_index` - The index of the cache to use. Use `ReadDiskStream::num_caches()` to see
-    /// how many caches have been assigned to this stream.
+    ///    how many caches have been assigned to this stream.
     /// * `start_frame` - The frame in the file to start filling in the cache from. If any portion lies
-    /// outside the end of the file, then that portion will be ignored.
+    ///    outside the end of the file, then that portion will be ignored.
     ///
     /// If the cache already exists, then it will be overwritten. If the cache already starts from this
     /// position, then nothing will be done and (false) will be returned. Otherwise, (true) will be
@@ -384,7 +384,7 @@ impl<D: Decoder> ReadDiskStream<D> {
     /// This is realtime-safe.
     ///
     /// * `frame` - The position in the file to seek to. If this lies outside of the end of
-    /// the file, then playback will return silence.
+    ///    the file, then playback will return silence.
     /// * `seek_mode` - Describes how to search for a suitable cache to use.
     ///
     /// If a suitable cache is found, then (true) is returned meaning that playback can resume immediately

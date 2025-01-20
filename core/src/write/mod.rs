@@ -35,7 +35,7 @@ pub struct WriteStreamOptions<E: Encoder> {
 
     /// The number of write blocks to reserve. This must be sufficiently large to
     /// ensure there are enough write blocks for the client in the worst case
-    /// write latency scenerio.
+    /// write latency scenario.
     ///
     /// This should be left alone unless you know what you are doing.
     pub num_write_blocks: usize,

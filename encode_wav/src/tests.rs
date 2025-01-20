@@ -23,7 +23,7 @@ fn encode_wav() {
     let mut sine_u8_l: Vec<u8> = Vec::with_capacity(32768);
     for i in 0..32768 {
         let val_f64 = sine_f64[i];
-        let val_u8 = (((val_f64 + 1.0) / 2.0) * std::u8::MAX as f64).round() as u8;
+        let val_u8 = (((val_f64 + 1.0) / 2.0) * u8::MAX as f64).round() as u8;
         sine_u8_l.push(val_u8)
     }
     let mut sine_u8_r = sine_u8_l.clone();
@@ -33,7 +33,7 @@ fn encode_wav() {
     let mut sine_i16_l: Vec<i16> = Vec::with_capacity(32768);
     for i in 0..32768 {
         let val_f64 = sine_f64[i];
-        let val_i16 = (val_f64 * std::i16::MAX as f64).round() as i16;
+        let val_i16 = (val_f64 * i16::MAX as f64).round() as i16;
         sine_i16_l.push(val_i16)
     }
     let mut sine_i16_r = sine_i16_l.clone();

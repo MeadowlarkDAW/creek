@@ -223,7 +223,7 @@ impl Process {
                 // Convert to u8
                 for i in 0..num_frames {
                     self.u8_buffer
-                        .push((((self.f32_buffer[i] + 1.0) / 2.0) * std::u8::MAX as f32) as u8);
+                        .push((((self.f32_buffer[i] + 1.0) / 2.0) * u8::MAX as f32) as u8);
                 }
 
                 write_stream.write(&[&self.u8_buffer, &self.u8_buffer])?;
@@ -235,7 +235,7 @@ impl Process {
                 // Convert to i16
                 for i in 0..num_frames {
                     self.i16_buffer
-                        .push((self.f32_buffer[i] * std::i16::MAX as f32) as i16);
+                        .push((self.f32_buffer[i] * i16::MAX as f32) as i16);
                 }
 
                 write_stream.write(&[&self.i16_buffer, &self.i16_buffer])?;

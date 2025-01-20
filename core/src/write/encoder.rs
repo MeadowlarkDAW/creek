@@ -42,7 +42,7 @@ pub trait Encoder: Sized + 'static {
 
     /// The default number of write blocks. This must be sufficiently large to
     /// ensure there are enough write blocks for the client in the worst case
-    /// write latency scenerio.
+    /// write latency scenario.
     const DEFAULT_NUM_WRITE_BLOCKS: usize;
 
     /// Open the file for writing.

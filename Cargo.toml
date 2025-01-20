@@ -58,7 +58,7 @@ encode-wav = ["creek-encode-wav"]
 
 [dependencies]
 creek-core = { version = "0.2.2", path = "core" }
-creek-decode-symphonia = { version = "0.3.1", path = "decode_symphonia", optional = true }
+creek-decode-symphonia = { version = "0.3.2", path = "decode_symphonia", optional = true }
 creek-encode-wav = { version = "0.2.0", path = "encode_wav", optional = true }
 
 # Unoptimized builds result in prominent gaps of silence after cache misses in the demo player.
